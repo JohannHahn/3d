@@ -1,0 +1,4 @@
+[submodule "gmath"]
+	path = thirdparty/gmath
+	url = https://github.com/JohannHahn/gmath.git
+	ignore = dirty
