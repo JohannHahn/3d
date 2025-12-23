@@ -9,9 +9,10 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
-add_executable(main main.cpp thirdparty/src/glad.c)
+add_executable(main main.cpp thirdparty/glad/src/glad.c)
 
-target_include_directories(main PRIVATE thirdparty/include)
+target_include_directories(main PRIVATE thirdparty)
+target_include_directories(main PRIVATE thirdparty/glad/include)
 
 if (MSVC)
     #target_compile_options(MyApp PRIVATE /std:c++latest)

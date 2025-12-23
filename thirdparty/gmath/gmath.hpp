@@ -1,30 +1,38 @@
 #ifndef GMATH_HPP
 #define GMATH_HPP
 
+#include <string>
 
 
 
 struct Vec3 {
-    double x;
-    double y;
-    double z;
+    float x;
+    float y;
+    float z;
 	
-      double length() const {
+      float length() const {
           return sqrtf(x*x + y*y + z*z);
       }
+    std::string to_str() {
+	return std::string("Vec3: x = ") + std::to_string(x) + ", y = " + std::to_string(y) + ", z = " + std::to_string(z);
+    }
+};
+
+struct Mat4 {
+    float data[4*4] = {0.f};
 };
 
 void add_inplace(Vec3& a, const Vec3& b);
 Vec3 operator+(const Vec3& a, const Vec3& b);
 Vec3 operator-(const Vec3& a, const Vec3& b);
 Vec3 operator-(const Vec3& a, const Vec3& b);
-Vec3 operator*(const Vec3& v, double t);
-Vec3 operator/(const Vec3& v, double t);
+Vec3 operator*(const Vec3& v, float t);
+Vec3 operator/(const Vec3& v, float t);
 std::ostream& operator<<(std::ostream& outstr, const Vec3 v);
 std::string operator<<(const Vec3 v, const char* str);
 Vec3 normalize(const Vec3& v);
-double dot(Vec3 a, Vec3 b);
-Vec3 lerp(Vec3 start, Vec3 end, double t);
+float dot(Vec3 a, Vec3 b);
+Vec3 lerp(Vec3 start, Vec3 end, float t);
 
 #ifdef GMATH_IMPLEMENTATION
 
@@ -50,7 +58,7 @@ Vec3 operator-(const Vec3& a, const Vec3& b) {
     return v;
 }
 
-Vec3 operator*(const Vec3& v, double t) {
+Vec3 operator*(const Vec3& v, float t) {
     Vec3 res;
     res.x = v.x * t;
     res.y = v.y * t;
@@ -58,7 +66,7 @@ Vec3 operator*(const Vec3& v, double t) {
     return res;
 }
 
-Vec3 operator/(const Vec3& v, double t) {
+Vec3 operator/(const Vec3& v, float t) {
     Vec3 res;
     res.x = v.x / t;
     res.y = v.y / t;
@@ -79,11 +87,11 @@ Vec3 normalize(const Vec3& v) {
 	return v / v.length();
 }
 
-double dot(Vec3 a, Vec3 b) {
+float dot(Vec3 a, Vec3 b) {
 	return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
-Vec3 lerp(Vec3 start, Vec3 end, double t) {
+Vec3 lerp(Vec3 start, Vec3 end, float t) {
 	return start * (1.f - t) + end * t; 
 }
 

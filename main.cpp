@@ -13,15 +13,20 @@
 #include <string>
 #include <fstream>
 #include <sstream>
+#include <format>
 #include <math.h>
+#define GMATH_IMPLEMENTATION
+#include <gmath/gmath.hpp>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image/stb_image.h>
 
 const char* window_class_name = "window_class";
 const char* window_title = "Hello World";
 const char* vertex_path = "src/vertex.glsl";
 const char* fragment_path = "src/fragment.glsl";
 
-constexpr uint64_t window_width = 900;
-constexpr uint64_t window_height = 600;
+constexpr uint64_t window_width = 1024;
+constexpr uint64_t window_height = 1024;
 
 GLuint vao;
 
@@ -29,7 +34,6 @@ typedef BOOL (WINAPI *wglSwapIntervalEXT_t)(int);
 wglSwapIntervalEXT_t wglSwapIntervalEXT =
     (wglSwapIntervalEXT_t)wglGetProcAddress("wglSwapIntervalEXT");
 
-std::vector<double> vertices;
 
 
 GLuint compile_shader(GLenum type, const char* src) {
@@ -133,6 +137,54 @@ namespace d3 {
 	Color col;		
     };
 
+    struct Vertex3 {
+	Vec3 pos;
+	float u;
+	float v;
+	uint32_t tex_id;
+	std::string to_str() {
+	    return std::string("pos: ") + pos.to_str() + std::string(", uv: ") + std::to_string(u) + ", " + std::to_string(v) + ", tex_id: " + std::to_string(tex_id);
+	}
+    };
+    struct Object{
+        std::vector<size_t> indeces;
+        Vec3 position;
+        Mat4 mat;
+    };
+
+    //basically an image
+    struct Texture {
+	uint32_t* data;
+	int width;
+	int height;
+	int comp_per_px = 4;
+	bool load_from_file(const char* filename) {
+	    int n; 
+	    data = (uint32_t*)stbi_load(filename, &width, &height, &n, comp_per_px);
+	    return (data != nullptr);
+	}
+	uint32_t get_color(float u, float v) const {
+	    if (u > 1.f) u = 1.f;
+	    if (v > 1.f) v = 1.f;
+	    if (u < 0.f) u = 0.f;
+	    if (v < 0.f) v = 0.f;
+	    if(!(u <= 1.f && u >= 0.f && v <= 1.f && v >= 0.f)) {
+		std::println("uv wrong: {} {}", u, v);
+		assert(0 && "uv wrong in get color");
+		return 0;
+	    }
+	    int x = std::round(u * (width  - 1 + 0.09f));
+	    int y = std::round(v * (height - 1 + 0.09f));
+	    size_t index = x + y * width;
+	    if (index >= width * height) {
+		std::println("ERROR: index  = {} is wrong, u = {}, v = {}, x = {}, y = {}, width = {}, height = {}, width * height = {}", index, u, v, x, y, width, height, width * height);
+		assert(0 && "wrong index get color");
+		return 0;
+	    }
+	    return data[index];
+	}
+    };
+
     void sort_y(PointI points[3]) {
 	for (int i = 1; i < 3; ++i) {
 	    if (points[0].y > points[i].y) {
@@ -173,8 +225,35 @@ namespace d3 {
 	    }
 	}
     }
-    Color lerp(Color start, Color end, double t) {
-	double inv_t = 1.f - t;
+    void sort_y(Vertex3 a, Vertex3 b, Vertex3 c, int indeces[3]) {
+	if (b.pos.y < a.pos.y && b.pos.y < c.pos.y) {
+	    indeces[0] = 1;
+	    indeces[1] = 0;
+	    if (a.pos.y > c.pos.y) {
+		indeces[1] = 2;
+		indeces[2] = 0;
+	    }
+	}
+	else if (c.pos.y < a.pos.y && c.pos.y < b.pos.y) {
+	    indeces[0] = 2;
+	    indeces[2] = 0;
+	    if (b.pos.y > a.pos.y) {
+		indeces[1] = 0;
+		indeces[2] = 1;
+	    }
+	}
+	else {
+	    if (b.pos.y > c.pos.y) {
+		indeces[1] = 2;
+		indeces[2] = 1;
+	    }
+	}
+    }
+    Color lerp(Color start, Color end, float t) {
+	if (t < 0.f) t = 0.f;
+	else if (t > 1.f) t = 1.f;
+
+	float inv_t = 1.f - t;
 	Color res = {
 			(uint8_t)(start.r * inv_t + end.r * t), 
 			(uint8_t)(start.g * inv_t + end.g * t),
@@ -199,6 +278,11 @@ namespace d3 {
 
 	uint64_t target_fps = 120;
 
+	std::vector<Vertex3> vertices;
+	std::vector<size_t> indeces;
+	std::vector<Texture> textures;
+	std::vector<Object> objects;
+
 	Window(uint64_t width, uint64_t height, const char* name, const char* class_name, HINSTANCE hInstance):
 	width(width), height(height), name(name), pixels(new uint32_t[width * height]){
 	    
@@ -209,7 +293,7 @@ namespace d3 {
 	    
 	    RegisterClass(&window_class);
 
-	    RECT r = {0, 0, 900, 600};
+	    RECT r = {0, 0, (long)width, (long)height};
 	    AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, FALSE);
 
 	    hwnd = CreateWindowEx(
@@ -221,17 +305,24 @@ namespace d3 {
 				    nullptr, nullptr, hInstance, nullptr);
 
 	    if (hwnd == nullptr) {
-		std::println("ERROR: could not create Window class : {}, name :  {}", class_name, name);
-		exit(0);
+			std::println("ERROR: could not create Window class : {}, name :  {}", class_name, name);
+			exit(0);
 	    }
 
 	    hdc = GetDC(hwnd);
 	    if (hdc == nullptr) {
-		std::println("ERROR: could not obtain device context");
-		exit(0);
+			std::println("ERROR: could not obtain device context");
+			exit(0);
 	    } 
 
 	    init_gl();
+	    
+	    Texture t;
+	    if(!t.load_from_file("res/johanndr.jpg")) {
+			std::println("ERROR: could not load johanndr");
+			exit(0);
+	    }
+	    textures.push_back(t);
 	}
 
 	~Window() {
@@ -277,7 +368,6 @@ namespace d3 {
 
 	    wglMakeCurrent(hdc, gl_ctx);
 
-
 	    if(!gladLoadGL()) {
 		std::println("{}", glGetError());	
 	    }
@@ -312,8 +402,9 @@ namespace d3 {
 	    // vsync an;
 	    if (wglSwapIntervalEXT) wglSwapIntervalEXT(1);
 	}
+	
 
-	void render() {
+	void render_screen() {
 	    glClearColor(0,0,0,1);
 	    glClear(GL_COLOR_BUFFER_BIT);
 
@@ -349,7 +440,7 @@ namespace d3 {
 		for(int x = rec.x; x < rec.x + rec.width; ++x) {
 		    uint64_t index = x + y * window_width;
 		    if (index >= width * height) {
-			std::println("index = {}, x = {}, y = {} ", index, x, y);
+			std::println("draw_rec: index = {}, x = {}, y = {} ", index, x, y);
 		    }
 		    assert(index < width * height && "draw rec");
 		    pixels[index] = c;
@@ -357,7 +448,7 @@ namespace d3 {
 	    }
 	}
 
-	void draw_line(int x1, int y1, int x2, int y2, uint32_t color) {
+	void draw_line_color(int x1, int y1, int x2, int y2, uint32_t color) {
 	    assert(pixels);
 
 	    //if (x1 < 0) x1 = 0;
@@ -396,6 +487,26 @@ namespace d3 {
 	    }
 	}
 
+	// horizontal line
+	void draw_line_tex_h(int x1, int y1, int x2, float u1, float v1, float u2,  const Texture& tex) {
+	    assert(pixels);
+
+	    int dx = std::abs(x2 - x1);
+	    int sx = (x1 < x2) ? 1 : -1;
+	    float u = u1;
+
+
+	    float u_step = dx == 0 ? 0 : (u2 - u1) / dx;
+
+	    for (int i = 0; i < dx; ++i) {
+		pixels[x1 + y1 * width] = tex.get_color(u1, v1);
+		x1 += sx;
+		float d_cur = x2 - x1;
+		////u1 = u * d_cur / dx + (1.f - d_cur/dx) * u2;
+	    	u1 += u_step;
+	    }
+	}
+
 	void draw_line_blend(int x1, int y1, int x2, int y2, Color start, Color end) {
 	    assert(pixels);
 
@@ -413,13 +524,12 @@ namespace d3 {
 
 	    int err = dx + dy;
 	    int e2;
-	    float length = std::sqrtf(dx * dx + dy * dy);
-	    float step = 1.f / length;
+	    Vec3 v = {(float)x2 - x1, (float)y2 - y1, 0};
+	    float length = v.length();
 	    float t = 0.f;
 
 	    while (true) {
 		if ((uint32_t)(x1 + y1 * width) < width * height) {
-		    float currentlength = std::sqrtf((float)x * dx + dy * dy);
 		    int color = lerp(start, end, t).to_int();
 		    pixels[x1 + y1 * width] = color;
 		}
@@ -438,8 +548,9 @@ namespace d3 {
 		    err += dx;
 		    y1 += sy;
 		}
-		t += step;
-		std::println("t = {}", t);
+		v.x = x2 - x1;
+		v.y = y2 - y1;
+		t = (length - v.length()) / length;
 	        //std::println("p1 : {} {} , p2 : {} {}, index = {}", x1, y1, x2, y2, index);
 	    }
 	}
@@ -448,7 +559,171 @@ namespace d3 {
 	    return p.x >= 0 && p.x < width && p.y >= 0 && p.y < height;
 	}
 
-	void fill_triangle(Vertex3C a, Vertex3C b, Vertex3C c) {
+	void push_object(Object obj, const Vertex3 vertices[], size_t count) {
+	    //for(int i = 0; i < count; ++i) {
+	    //    vertices.push_back(vertices[i]);
+	    //}     
+	}
+
+	void draw_triangles() {
+	    assert(indeces.size() % 3 == 0 && "Indeces count is not divisible by 3");	    
+	    for (int i = 2; i < indeces.size(); i += 3) {
+		fill_triangle(vertices[indeces[i - 2]], vertices[indeces[i - 1]], vertices[indeces[i]]);
+	    }
+	}
+
+	void fill_triangle(Vertex3& a, Vertex3& b, Vertex3& c) {
+	    int indices_sorted[3] = {0, 1, 2};
+	    //std::println("fill trig: a = {}, b = {}, c = {}", a.to_str(), b.to_str(), c.to_str());
+
+
+	    sort_y(a, b, c, indices_sorted);
+	    Vertex3* vs[3] = {
+			(indices_sorted[0] == 0 ? &a : (indices_sorted[0] == 1 ? &b : &c)),
+			(indices_sorted[1] == 0 ? &a : (indices_sorted[1] == 1 ? &b : &c)),
+			(indices_sorted[2] == 0 ? &a : (indices_sorted[2] == 1 ? &b : &c)),
+	    };
+	    // set start point lowest vertex (cursed)
+	    Vertex3 l_1 = *vs[0];
+	    Vertex3 l_2 = l_1;
+
+	    // choose target (end points of lines) based on lowest vertex by sorted index
+	    Vertex3 target1 = *vs[1];
+	    Vertex3 target2 = *vs[2];
+	    
+	    //std::println("fill_trig: l_1 = {}, l_2 = {}, target1 = {}, target2 = {}", l_1.to_str(), l_2.to_str(), target1.to_str(), target2.to_str());
+
+	    float u1 = l_1.u;
+	    float v1 = l_1.v;
+	    float u2 = l_2.u;
+	    float v2 = l_2.v;
+
+	    int dx1 = std::abs(target1.pos.x - l_1.pos.x);
+	    int sx1 = (l_1.pos.x < target1.pos.x) ? 1 : -1;
+
+	    int dy1 = -std::abs(target1.pos.y - l_1.pos.y);
+	    int sy1 = (l_1.pos.y < target1.pos.y) ? 1 : -1;
+
+	    int err1 = dx1 + dy1;
+	    int e2_1;
+
+	    int dx2 = std::abs(target2.pos.x - l_2.pos.x);
+	    int sx2 = (l_2.pos.x < target2.pos.x) ? 1 : -1;
+
+	    int dy2 = -std::abs(target2.pos.y - l_2.pos.y);
+	    int sy2 = (l_2.pos.y < target2.pos.y) ? 1 : -1;
+
+	    int err2 = dx2 + dy2;
+	    int e2_2;
+	    size_t index = 0;
+
+	    bool stop1 = false;
+	    bool stop2 = false;
+
+	    bool end1 = false;
+	    
+	    float u_step1 = dx1 != 0 ? (target1.u - l_1.u) / (float)dx1 : 0; 
+	    float v_step1 = dy1 != 0 ? -(target1.v - l_1.v) / (float)dy1 : 0; 
+	    float u_step2 = dx2 != 0 ? (target2.u - l_2.u) / (float)dx2 : 0; 
+	    float v_step2 = dy2 != 0 ? -(target2.v - l_2.v) / (float)dy2 : 0; 
+
+	    //std::println("fill trig: l_1.u = {}, l_1.v = {}, l_2.u = {}, l_2.v = {}", l_1.u, l_1.v, l_2.u, l_2.v);
+	    //std::println("fill trig: u_step1 = {}, v_step1 = {}, u_step2 = {}, v_step2 = {}", u_step1, v_step1, u_step2, v_step2);
+	    //std::println("fill trig: dx1 = {}, dy1 = {}, dx2 = {}, dy2 = {}", dx1, dy1, dx2, dy2);
+
+	    while (true) {
+
+		index = l_1.pos.y * width  + l_1.pos.x;
+		assert(index < width * height && "fill triag line 1");
+		pixels[index] = textures[l_1.tex_id].get_color(l_1.u, l_1.v);
+		index = l_2.pos.y * width  + l_2.pos.x;
+		assert(index < width * height && "fill triag line 2");
+		pixels[index] = textures[l_2.tex_id].get_color(l_2.u, l_2.v);
+
+		if (l_1.pos.x == target1.pos.x && l_1.pos.y == target1.pos.y) {
+		    end1 = true;
+		}
+
+		if (l_2.pos.x == target2.pos.x && l_2.pos.y == target2.pos.y) {
+		    break;
+		}
+
+		// reassign values when one line is finished before the other -> have to change target
+	  	if (end1) {
+		    u1 = target1.u;
+		    v1 = target1.v;
+
+		    target1 = *vs[2];
+		    dx1 = std::abs(target1.pos.x - l_1.pos.x);
+		    sx1 = (l_1.pos.x < target1.pos.x) ? 1 : -1;
+
+		    dy1 = -std::abs(target1.pos.y - l_1.pos.y);
+		    sy1 = (l_1.pos.y < target1.pos.y) ? 1 : -1;
+		    u_step1 = dx1 != 0 ? -std::abs(target1.u - l_1.u) / (float)dx1 : 0; 
+		    v_step1 = dy1 != 0 ? -std::abs(target1.v - l_1.v) / (float)dy1 : 0; 
+	  	    	
+	  	    //dx1 = std::abs(vs[2]->pos.x - vs[1]->pos.x);
+	  	    //sx1 = (vs[1]->pos.x < vs[2]->pos.x) ? 1 : -1;
+          
+		    //dy1 = -std::abs(vs[2]->pos.y - vs[1]->pos.y);
+		    //sy1 = (vs[1]->pos.y < vs[2]->pos.y) ? 1 : -1;
+
+		    err1 = dx1 + dy1;
+		    end1 = false;
+		    //std::println("trig_fill end1: l_1 = {}", l_1.to_str());
+		}
+
+		if (!stop1) {
+		    e2_1 = err1 << 1;
+
+		    if (e2_1 > dy1) {
+			err1 += dy1;
+			l_1.pos.x += sx1;
+			int dx_t = std::abs(target1.pos.x - l_1.pos.x);
+			//l_1.u = u1 * dx_t / dx1 + target1.u * (1.f - dx_t / dx1) ;
+			l_1.u += u_step1;
+		    }
+
+		    if (e2_1 < dx1) {
+			err1 += dx1;
+			l_1.pos.y += sy1;
+			int dy_t = std::abs(target1.pos.y - l_1.pos.y);
+			l_1.v += v_step1;
+			//l_1.v = v1 * dy_t / dy1 + target1.v * (1.f - dy_t / dy1) ;
+			stop1 = true;
+		    }
+		}
+		if (!stop2) {
+		    e2_2 = err2 << 1;
+
+		    if (e2_2 > dy2) {
+			err2 += dy2;
+			l_2.pos.x += sx2;
+			int dx_t = std::abs(target2.pos.x - l_2.pos.x);
+			l_2.u += u_step2;
+			//l_2.u = u2 * dx_t / dx2 + target2.u * (1.f - dx_t / dx2) ;
+		    }
+
+		    if (e2_2 < dx2) {
+			err2 += dx2;
+			l_2.pos.y += sy2;
+			int dy_t = std::abs(target2.pos.y - l_2.pos.y);
+			l_2.v += v_step2;
+			//l_2.v = v2 * dy_t / dy2 + target2.v * (1.f - dy_t / dy2) ;
+			stop2 = true;
+		    }
+		}
+		
+		
+		if (stop1 && stop2) {
+		    //std::println("fill_trig: draw: l_1 = {}, l_2 = {}", l_1.to_str(), l_2.to_str());
+		    draw_line_tex_h(l_1.pos.x, l_1.pos.y, l_2.pos.x, l_1.u, l_1.v, l_2.u, textures[l_1.tex_id]);
+		    stop1 = false;
+		    stop2 = false;
+		}
+	    }
+	}
+	void fill_triangle_color(Vertex3C a, Vertex3C b, Vertex3C c) {
 	    int indices_sorted[3] = {0, 1, 2};
 
 
@@ -491,16 +766,30 @@ namespace d3 {
 	    bool stop2 = false;
 
 	    bool end1 = false;
-
-	    uint32_t color = 0xffffffff;
+	    
+	    float t1 = 0.f;
+	    Vec3 v = {target1.x - l_1.x, target1.y - l_1.y, 0};
+	    float l1 = v.length();
+	    v = {target2.x - l_2.x, target2.y - l_2.y, 0};
+	    float l2 = v.length();
+	    float t2 = 0.f;
+	    
+	    Color col1, col2;
 
 	    while (true) {
+		v = {target1.x - l_1.x, target1.y - l_1.y, 0};
+		t1 = (l1 - v.length()) / l1;
+		col1 = lerp(l_1.col, target1.col, t1);
+		v = {target2.x - l_2.x, target2.y - l_2.y, 0};
+		t2 = (l2 - v.length()) / l2;
+		col2 = lerp(l_2.col, target2.col, t2);
+
 		index = l_1.y * width  + l_1.x;
 		assert(index < width * height && "fill triag line 1");
-		pixels[index] = l_1.col.to_int();
+		pixels[index] = col1.to_int();
 		index = l_2.y * width  + l_2.x;
 		assert(index < width * height && "fill triag line 2");
-		pixels[index] = l_2.col.to_int();
+		pixels[index] = col2.to_int();
 
 		if (l_1.x == target1.x && l_1.y == target1.y) {
 		    end1 = true;
@@ -520,7 +809,11 @@ namespace d3 {
 
 		    err1 = dx1 + dy1;
 		    end1 = false;
+		    l_1.col = target1.col;
 		    target1 = *vs[2];
+		    t1 = 0.f;
+		    v = {target1.x - l_1.x, target1.y - l_1.y, 0};
+		    l1 = v.length();
 		}
 
 		if (!stop1) {
@@ -553,18 +846,14 @@ namespace d3 {
 		}
 		
 		if (stop1 && stop2) {
-		    draw_line_blend(l_1.x, l_1.y, l_2.x, l_2.y, l_1.col, l_2.col);
+		    draw_line_blend(l_1.x, l_1.y, l_2.x, l_2.y, col1, col2);
 		    stop1 = false;
 		    stop2 = false;
 		}
 	    }
 	}
 
-
     };
-
-
-
 
 
 
@@ -572,7 +861,8 @@ namespace d3 {
 
 
 
-d3::RectangleI rec = {0, 0, 100, 100};
+
+d3::RectangleI rec = {window_width - 200, 150, 100, 100};
 constexpr d3::Color BLACK = {0, 0, 0, 255};
 constexpr d3::Color RED = {255, 0, 0, 255};
 constexpr d3::Color GREEN = {0, 255, 0, 255};
@@ -580,21 +870,77 @@ constexpr d3::Color BLUE = {0, 0, 255, 255};
 
 
 
+bool index_test(float u, float v, int width, int height) {
+    size_t index = u * (width - 1) + v * (height - 1) * width;
+    float u_step = 1.f / width;
+    float v_step = 1.f / height;
+    int x_t = 0;
+    int y_t = 0;
+    float u1 = u;
+    float v1 = v;
+    std::println("Testing index: u = {}, v = {}, width = {}, height = {}, u_step = {}, v_step = {}", u, v, width, height, u_step, v_step);
+    std::println("Testing index: index initial = {}", index);
+    bool succ = true;
+    for (int y = 0; y < height; ++y) {
+	for (int x = 0; x < width; ++x) {
+	    x_t = std::round(u1 * (width  - 1 + 0.9f));
+	    y_t = std::round(v1 * (height - 1 + 0.9f));
+	    if (x_t != x) {
+		std::println("ERROR: wrong x calculated = {}, expected = {}, u = {}, u * width = {}", x_t, x, u1, u1 * (width - 1 + 0.09f));
+		succ = false;
+	    }
+	    if (y_t != y) {
+		std::println("ERROR: wrong y calculated = {}, expected = {}, v = {}, v * height = {}", y_t, y, v1, v1 * (height - 1 + 0.09f));
+		succ = false;
+	    }
+	    index = x_t + y_t * width;
+	    if (index > width * height) {
+		std::println("ERROR: wrong index = {}, width = {}, height = {}, width * height = {}", index, width, height, width * height);
+	    }
+	    u1 += u_step;
+	}
+	v1 += v_step;
+	u1 = u;
+    }
+    return succ;
+}
+
 
 int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     using namespace std::chrono_literals;
 
+    //if (!index_test(0, 0, 2048, 2048)) {
+    //    std::println("ERROR: index test failed");
+    //    return 1;
+    //}
+    
     d3::Window window(window_width, window_height, window_title, window_class_name, hInstance);
-    window.target_fps = 999;
+    window.target_fps = 100;
+    window.vertices.push_back({{50.f, 50.f, 0.f}, 0.f, 0.f, 0});
+    d3::Vertex3 b = {{50, window.height - 50.f, 0,}, 0.f, 1.f, 0};
+    d3::Vertex3 c = {{window_width - 50, 50, 0}, 1.f, 0.f, 0};
+    d3::Vertex3 d = {{window_width - 50, window_height - 50, 0}, 1.f, 1.f, 0};
+    window.vertices.push_back(b);
+    window.vertices.push_back(c);
+    window.vertices.push_back(d);
+
+    window.indeces.push_back(0);
+    window.indeces.push_back(1);
+    window.indeces.push_back(2);
+
+    window.indeces.push_back(1);
+    window.indeces.push_back(2);
+    window.indeces.push_back(3);
 
     window.show(nCmdShow);
-    MSG message;
+	MSG message = {0};
 
-    vertices.reserve(100);
 
     timeBeginPeriod(1);
     std::chrono::milliseconds frametime((uint64_t)(1000.f / window.target_fps));
     std::chrono::milliseconds elapsed_total;
+
+
 
     while (message.message != WM_QUIT) {
 
@@ -609,15 +955,27 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 	int step = 1;//speed * window.target_fps / 1000.f;
 	if (GetAsyncKeyState(VK_LEFT) & 0x8000) {
 	    rec.x -= step;
+	    for (d3::Vertex3& v : window.vertices) {
+		v.pos.x--;
+	    }
 	}
 	if (GetAsyncKeyState(VK_RIGHT) & 0x8000) {
 	    rec.x += step;
+	    for (d3::Vertex3& v : window.vertices) {
+		v.pos.x++;
+	    }
 	}
 	if (GetAsyncKeyState(VK_UP) & 0x8000) {
 	    rec.y--;
+	    for (d3::Vertex3& v : window.vertices) {
+		v.pos.y--;
+	    }
 	}
 	if (GetAsyncKeyState(VK_DOWN) & 0x8000) {
 	    rec.y++;
+	    for (d3::Vertex3& v : window.vertices) {
+		v.pos.y++;
+	    }
 	}
 	if (GetAsyncKeyState(VK_ESCAPE) & 0x8000) {
 	    PostMessage(window.hwnd, WM_CLOSE, 0, 0);
@@ -625,16 +983,12 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 	
 	window.clear_pixels(BLACK);
 
-	d3::Vertex3C a = {50, 50, 0, RED};
-	d3::Vertex3C b = {50, window.height - 50.f, 0, GREEN};
-	d3::Vertex3C c = {(float)rec.x, (float)rec.y, 0, BLUE};
 	window.draw_rec(rec, {0xFF, 0x00, 0x22, 0xFF} );
-	//window.draw_line(a.x, a.y, b.x, b.y, RED.to_int());
-	//window.draw_line(a.x, a.y, c.x, c.y, RED.to_int());
-	//window.draw_line(b.x, b.y, c.x, c.y, RED.to_int());
-	window.fill_triangle(a, b, c);
 
-	window.render();
+	window.draw_triangles();
+	//window.vertices[3].pos.x = rec.x;
+	//window.vertices[3].pos.y = rec.y;
+	window.render_screen();
 
 	auto end = std::chrono::steady_clock::now();
 	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin);
