@@ -2,6 +2,7 @@
 #define GMATH_HPP
 
 #include <string>
+#include <assert.h>
 
 
 
@@ -33,6 +34,7 @@ std::string operator<<(const Vec3 v, const char* str);
 Vec3 normalize(const Vec3& v);
 float dot(Vec3 a, Vec3 b);
 Vec3 lerp(Vec3 start, Vec3 end, float t);
+float lerpf(float start, float end, float t);
 
 #ifdef GMATH_IMPLEMENTATION
 
@@ -92,6 +94,12 @@ float dot(Vec3 a, Vec3 b) {
 }
 
 Vec3 lerp(Vec3 start, Vec3 end, float t) {
+	assert(t >= 0.f && t <= 1.f);
+	return start * (1.f - t) + end * t; 
+}
+
+float lerpf(float start, float end, float t) {
+	assert(t >= 0.f && t <= 1.f);
 	return start * (1.f - t) + end * t; 
 }
 

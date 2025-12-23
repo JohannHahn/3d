@@ -488,23 +488,29 @@ namespace d3 {
 	}
 
 	// horizontal line
-	void draw_line_tex_h(int x1, int y1, int x2, float u1, float v1, float u2,  const Texture& tex) {
+	void draw_line_tex_h(int x1, int y1, int x2, float u1, float v1, float u2, float v2,  const Texture& tex) {
 	    assert(pixels);
 
 	    int dx = std::abs(x2 - x1);
 	    int sx = (x1 < x2) ? 1 : -1;
-	    float u = u1;
-
 
 	    float u_step = dx == 0 ? 0 : (u2 - u1) / dx;
+	    float v_step = dx == 0 ? 0 : (v2 - v1) / dx;
 
 	    for (int i = 0; i < dx; ++i) {
 		pixels[x1 + y1 * width] = tex.get_color(u1, v1);
 		x1 += sx;
-		float d_cur = x2 - x1;
-		////u1 = u * d_cur / dx + (1.f - d_cur/dx) * u2;
+
+		//float cur_dx = std::abs(x2 - x1);
+		//float t = 1.f - cur_dx / dx;
+		//std::println("draw line: t = {}", t);
+		//u1 = lerpf(u1, u2, t);
+		//v1 = lerpf(v1, v2, t);
 	    	u1 += u_step;
+	    	v1 += v_step;
 	    }
+	    std::println("after draw_line_tex: u1 = {}, v1 = {}", u1, v1);
+	    //exit(0);
 	}
 
 	void draw_line_blend(int x1, int y1, int x2, int y2, Color start, Color end) {
@@ -591,12 +597,10 @@ namespace d3 {
 	    Vertex3 target1 = *vs[1];
 	    Vertex3 target2 = *vs[2];
 	    
-	    //std::println("fill_trig: l_1 = {}, l_2 = {}, target1 = {}, target2 = {}", l_1.to_str(), l_2.to_str(), target1.to_str(), target2.to_str());
+	    std::println("fill_trig: l_1 = {}, l_2 = {}, target1 = {}, target2 = {}", l_1.to_str(), l_2.to_str(), target1.to_str(), target2.to_str());
 
-	    float u1 = l_1.u;
-	    float v1 = l_1.v;
-	    float u2 = l_2.u;
-	    float v2 = l_2.v;
+	    float dist1 = (target1.pos - l_1.pos).length();
+	    float dist2 = (target2.pos - l_2.pos).length();
 
 	    int dx1 = std::abs(target1.pos.x - l_1.pos.x);
 	    int sx1 = (l_1.pos.x < target1.pos.x) ? 1 : -1;
@@ -627,18 +631,18 @@ namespace d3 {
 	    float u_step2 = dx2 != 0 ? (target2.u - l_2.u) / (float)dx2 : 0; 
 	    float v_step2 = dy2 != 0 ? -(target2.v - l_2.v) / (float)dy2 : 0; 
 
-	    //std::println("fill trig: l_1.u = {}, l_1.v = {}, l_2.u = {}, l_2.v = {}", l_1.u, l_1.v, l_2.u, l_2.v);
-	    //std::println("fill trig: u_step1 = {}, v_step1 = {}, u_step2 = {}, v_step2 = {}", u_step1, v_step1, u_step2, v_step2);
-	    //std::println("fill trig: dx1 = {}, dy1 = {}, dx2 = {}, dy2 = {}", dx1, dy1, dx2, dy2);
+	    std::println("fill trig: l_1.u = {}, l_1.v = {}, l_2.u = {}, l_2.v = {}", l_1.u, l_1.v, l_2.u, l_2.v);
+	    std::println("fill trig: u_step1 = {}, v_step1 = {}, u_step2 = {}, v_step2 = {}", u_step1, v_step1, u_step2, v_step2);
+	    std::println("fill trig: dx1 = {}, dy1 = {}, dx2 = {}, dy2 = {}", dx1, dy1, dx2, dy2);
 
 	    while (true) {
 
-		index = l_1.pos.y * width  + l_1.pos.x;
-		assert(index < width * height && "fill triag line 1");
-		pixels[index] = textures[l_1.tex_id].get_color(l_1.u, l_1.v);
-		index = l_2.pos.y * width  + l_2.pos.x;
-		assert(index < width * height && "fill triag line 2");
-		pixels[index] = textures[l_2.tex_id].get_color(l_2.u, l_2.v);
+		//index = l_1.pos.y * width  + l_1.pos.x;
+		//assert(index < width * height && "fill triag line 1");
+		//pixels[index] = textures[l_1.tex_id].get_color(l_1.u, l_1.v);
+		//index = l_2.pos.y * width  + l_2.pos.x;
+		//assert(index < width * height && "fill triag line 2");
+		//pixels[index] = textures[l_2.tex_id].get_color(l_2.u, l_2.v);
 
 		if (l_1.pos.x == target1.pos.x && l_1.pos.y == target1.pos.y) {
 		    end1 = true;
@@ -650,18 +654,18 @@ namespace d3 {
 
 		// reassign values when one line is finished before the other -> have to change target
 	  	if (end1) {
-		    u1 = target1.u;
-		    v1 = target1.v;
 
+		    l_1 = target1;
 		    target1 = *vs[2];
 		    dx1 = std::abs(target1.pos.x - l_1.pos.x);
 		    sx1 = (l_1.pos.x < target1.pos.x) ? 1 : -1;
 
 		    dy1 = -std::abs(target1.pos.y - l_1.pos.y);
 		    sy1 = (l_1.pos.y < target1.pos.y) ? 1 : -1;
-		    u_step1 = dx1 != 0 ? -std::abs(target1.u - l_1.u) / (float)dx1 : 0; 
-		    v_step1 = dy1 != 0 ? -std::abs(target1.v - l_1.v) / (float)dy1 : 0; 
+		    u_step1 = dx1 != 0 ? (target1.u - l_1.u) / (float)dx1 : 0; 
+		    v_step1 = dy1 != 0 ? -(target1.v - l_1.v) / (float)dy1 : 0; 
 	  	    	
+		    dist1 = (target1.pos - l_1.pos).length();
 	  	    //dx1 = std::abs(vs[2]->pos.x - vs[1]->pos.x);
 	  	    //sx1 = (vs[1]->pos.x < vs[2]->pos.x) ? 1 : -1;
           
@@ -671,6 +675,7 @@ namespace d3 {
 		    err1 = dx1 + dy1;
 		    end1 = false;
 		    //std::println("trig_fill end1: l_1 = {}", l_1.to_str());
+		    
 		}
 
 		if (!stop1) {
@@ -681,7 +686,7 @@ namespace d3 {
 			l_1.pos.x += sx1;
 			int dx_t = std::abs(target1.pos.x - l_1.pos.x);
 			//l_1.u = u1 * dx_t / dx1 + target1.u * (1.f - dx_t / dx1) ;
-			l_1.u += u_step1;
+			//l_1.u += u_step1;
 		    }
 
 		    if (e2_1 < dx1) {
@@ -700,7 +705,7 @@ namespace d3 {
 			err2 += dy2;
 			l_2.pos.x += sx2;
 			int dx_t = std::abs(target2.pos.x - l_2.pos.x);
-			l_2.u += u_step2;
+			//l_2.u += u_step2;
 			//l_2.u = u2 * dx_t / dx2 + target2.u * (1.f - dx_t / dx2) ;
 		    }
 
@@ -708,7 +713,7 @@ namespace d3 {
 			err2 += dx2;
 			l_2.pos.y += sy2;
 			int dy_t = std::abs(target2.pos.y - l_2.pos.y);
-			l_2.v += v_step2;
+			//l_2.v += v_step2;
 			//l_2.v = v2 * dy_t / dy2 + target2.v * (1.f - dy_t / dy2) ;
 			stop2 = true;
 		    }
@@ -717,15 +722,30 @@ namespace d3 {
 		
 		if (stop1 && stop2) {
 		    //std::println("fill_trig: draw: l_1 = {}, l_2 = {}", l_1.to_str(), l_2.to_str());
-		    draw_line_tex_h(l_1.pos.x, l_1.pos.y, l_2.pos.x, l_1.u, l_1.v, l_2.u, textures[l_1.tex_id]);
+		    float cur_dist1 = (target1.pos - l_1.pos).length();
+		    float t = 1.f - cur_dist1 / dist1;
+		    std::println("fill trig: t1 = {}", t);
+		    std::println("fill trig: dist1 = {}", dist1);
+		    std::println("fill trig: cur_dist1 = {}", cur_dist1);
+		    std::println("fill trig: l_1.u = {}, target1.u = {}", l_1.u, target1.u);
+		    float u1 = lerpf(l_1.u, target1.u, t);
+		    std::println("fill trig: u1 = {}", u1);
+		    float v1 = lerpf(l_1.v, target1.v, t);
+
+		    t = 1.f - (target2.pos - l_2.pos).length() / dist2;
+		    std::println("fill trig: t2 = {}", t);
+		    float u2 = lerpf(l_2.u, target2.u, t);
+		    float v2 = lerpf(l_2.v, target2.v, t);
+
+		    draw_line_tex_h(l_1.pos.x, l_1.pos.y, l_2.pos.x, u1, v1, u2, v2, textures[l_1.tex_id]);
 		    stop1 = false;
 		    stop2 = false;
 		}
 	    }
+	//exit(9);
 	}
 	void fill_triangle_color(Vertex3C a, Vertex3C b, Vertex3C c) {
 	    int indices_sorted[3] = {0, 1, 2};
-
 
 	    //sort_y(vs);
 	    sort_y(a, b, c, indices_sorted);
@@ -916,13 +936,16 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
     
     d3::Window window(window_width, window_height, window_title, window_class_name, hInstance);
     window.target_fps = 100;
-    window.vertices.push_back({{50.f, 50.f, 0.f}, 0.f, 0.f, 0});
-    d3::Vertex3 b = {{50, window.height - 50.f, 0,}, 0.f, 1.f, 0};
-    d3::Vertex3 c = {{window_width - 50, 50, 0}, 1.f, 0.f, 0};
-    d3::Vertex3 d = {{window_width - 50, window_height - 50, 0}, 1.f, 1.f, 0};
-    window.vertices.push_back(b);
-    window.vertices.push_back(c);
-    window.vertices.push_back(d);
+
+    //window.vertices.push_back({{50, window_height / 2.f, 0.f}, 0.f, 0.f, 0});
+    //window.vertices.push_back({{window_width / 2.f, window.height - 50.f, 0,}, 0.f, 1.f, 0});
+    //window.vertices.push_back({{window_width / 2.f, 50, 0}, 1.f, 0.f, 0});
+    //window.vertices.push_back({{window_width - 50, window_height / 2.f, 0}, 1.f, 1.f, 0});
+
+    window.vertices.push_back({{50, 50, 0.f}, 0.f, 0.f, 0});
+    window.vertices.push_back({{50 , window.height - 50.f, 0,}, 0.f, 1.f, 0});
+    window.vertices.push_back({{window_width - 50, 50, 0}, 1.f, 0.f, 0});
+    window.vertices.push_back({{window_width - 50, window_height - 50, 0}, 1.f, 1.f, 0});
 
     window.indeces.push_back(0);
     window.indeces.push_back(1);
@@ -956,30 +979,32 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 	if (GetAsyncKeyState(VK_LEFT) & 0x8000) {
 	    rec.x -= step;
 	    for (d3::Vertex3& v : window.vertices) {
-		v.pos.x--;
+		//v.pos.x--;
 	    }
 	}
 	if (GetAsyncKeyState(VK_RIGHT) & 0x8000) {
 	    rec.x += step;
 	    for (d3::Vertex3& v : window.vertices) {
-		v.pos.x++;
+		//v.pos.x++;
 	    }
 	}
 	if (GetAsyncKeyState(VK_UP) & 0x8000) {
 	    rec.y--;
 	    for (d3::Vertex3& v : window.vertices) {
-		v.pos.y--;
+		//v.pos.y--;
 	    }
 	}
 	if (GetAsyncKeyState(VK_DOWN) & 0x8000) {
 	    rec.y++;
 	    for (d3::Vertex3& v : window.vertices) {
-		v.pos.y++;
+		//v.pos.y++;
 	    }
 	}
 	if (GetAsyncKeyState(VK_ESCAPE) & 0x8000) {
 	    PostMessage(window.hwnd, WM_CLOSE, 0, 0);
 	}
+	window.vertices[3].pos.x = rec.x;
+	window.vertices[3].pos.y = rec.y;
 	
 	window.clear_pixels(BLACK);
 
