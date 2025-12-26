@@ -14,5 +14,4 @@ CMakeUserPresets.json
 *.exe
 vs/
 build/
-thirdparty/gmath
 

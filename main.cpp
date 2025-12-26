@@ -28,6 +28,8 @@ const char* fragment_path = "src/fragment.glsl";
 constexpr uint64_t window_width = 1024;
 constexpr uint64_t window_height = 1024;
 
+float angle = 0.f;
+
 GLuint vao;
 
 typedef BOOL (WINAPI *wglSwapIntervalEXT_t)(int);
@@ -146,9 +148,10 @@ namespace d3 {
 	    return std::string("pos: ") + pos.to_str() + std::string(", uv: ") + std::to_string(u) + ", " + std::to_string(v) + ", tex_id: " + std::to_string(tex_id);
 	}
     };
+
     struct Object{
         std::vector<size_t> indeces;
-        Vec3 position;
+        Vec4 position;
         Mat4 mat;
     };
 
@@ -164,13 +167,13 @@ namespace d3 {
 	    return (data != nullptr);
 	}
 	uint32_t get_color(float u, float v) const {
-	    if (u > 1.f) u = 1.f;
-	    if (v > 1.f) v = 1.f;
-	    if (u < 0.f) u = 0.f;
-	    if (v < 0.f) v = 0.f;
+	    if (std::isnan(u)) u = 0.f;
+	    if (std::isnan(v)) v = 0.f;
+	    u = clamp(u, 0.f, 1.f);
+	    v = clamp(v, 0.f, 1.f);
 	    if(!(u <= 1.f && u >= 0.f && v <= 1.f && v >= 0.f)) {
 		std::println("uv wrong: {} {}", u, v);
-		assert(0 && "uv wrong in get color");
+		//assert(0 && "uv wrong in get color");
 		return 0;
 	    }
 	    int x = std::round(u * (width  - 1 + 0.09f));
@@ -178,7 +181,7 @@ namespace d3 {
 	    size_t index = x + y * width;
 	    if (index >= width * height) {
 		std::println("ERROR: index  = {} is wrong, u = {}, v = {}, x = {}, y = {}, width = {}, height = {}, width * height = {}", index, u, v, x, y, width, height, width * height);
-		assert(0 && "wrong index get color");
+		//assert(0 && "wrong index get color");
 		return 0;
 	    }
 	    return data[index];
@@ -509,7 +512,7 @@ namespace d3 {
 	    	u1 += u_step;
 	    	v1 += v_step;
 	    }
-	    std::println("after draw_line_tex: u1 = {}, v1 = {}", u1, v1);
+	    //std::println("after draw_line_tex: u1 = {}, v1 = {}", u1, v1);
 	    //exit(0);
 	}
 
@@ -573,6 +576,29 @@ namespace d3 {
 
 	void draw_triangles() {
 	    assert(indeces.size() % 3 == 0 && "Indeces count is not divisible by 3");	    
+
+	    Mat4 rotation = Mat4::rotation_z(angle);
+
+	    for (int i = 2; i < indeces.size(); i += 3) {
+		Vertex3 a = vertices[indeces[i - 2]];
+		Vertex3 b = vertices[indeces[i - 1]];
+		Vertex3 c = vertices[indeces[i]];
+		std::println("before :\na = {}", a.to_str());
+		std::println("b = {}", b.to_str());
+		std::println("c = {}", c.to_str());
+		a.pos.multiply(rotation);
+		b.pos.multiply(rotation);
+		c.pos.multiply(rotation);
+		std::println("after :\na = {}", a.to_str());
+		std::println("b = {}", b.to_str());
+		std::println("c = {}", c.to_str());
+		//fill_triangle(vertices[indeces[i - 2]], vertices[indeces[i - 1]], vertices[indeces[i]]);
+		fill_triangle(a, b, c);
+	    }
+	}
+
+	void draw_object(const Object& obj) {
+	    assert(obj.indeces.size() % 3 == 0 && "Object indeces count is not divisible by 3");	    
 	    for (int i = 2; i < indeces.size(); i += 3) {
 		fill_triangle(vertices[indeces[i - 2]], vertices[indeces[i - 1]], vertices[indeces[i]]);
 	    }
@@ -597,7 +623,7 @@ namespace d3 {
 	    Vertex3 target1 = *vs[1];
 	    Vertex3 target2 = *vs[2];
 	    
-	    std::println("fill_trig: l_1 = {}, l_2 = {}, target1 = {}, target2 = {}", l_1.to_str(), l_2.to_str(), target1.to_str(), target2.to_str());
+	    //std::println("fill_trig: l_1 = {}, l_2 = {}, target1 = {}, target2 = {}", l_1.to_str(), l_2.to_str(), target1.to_str(), target2.to_str());
 
 	    float dist1 = (target1.pos - l_1.pos).length();
 	    float dist2 = (target2.pos - l_2.pos).length();
@@ -631,9 +657,11 @@ namespace d3 {
 	    float u_step2 = dx2 != 0 ? (target2.u - l_2.u) / (float)dx2 : 0; 
 	    float v_step2 = dy2 != 0 ? -(target2.v - l_2.v) / (float)dy2 : 0; 
 
-	    std::println("fill trig: l_1.u = {}, l_1.v = {}, l_2.u = {}, l_2.v = {}", l_1.u, l_1.v, l_2.u, l_2.v);
-	    std::println("fill trig: u_step1 = {}, v_step1 = {}, u_step2 = {}, v_step2 = {}", u_step1, v_step1, u_step2, v_step2);
-	    std::println("fill trig: dx1 = {}, dy1 = {}, dx2 = {}, dy2 = {}", dx1, dy1, dx2, dy2);
+	    //std::println("fill trig: l_1.u = {}, l_1.v = {}, l_2.u = {}, l_2.v = {}", l_1.u, l_1.v, l_2.u, l_2.v);
+	    //std::println("fill trig: u_step1 = {}, v_step1 = {}, u_step2 = {}, v_step2 = {}", u_step1, v_step1, u_step2, v_step2);
+	    //std::println("fill trig: dx1 = {}, dy1 = {}, dx2 = {}, dy2 = {}", dx1, dy1, dx2, dy2);
+	    float cur_dist1 = width * height * 2.f;
+	    float cur_dist2 = width * height * 2.f;
 
 	    while (true) {
 
@@ -644,11 +672,22 @@ namespace d3 {
 		//assert(index < width * height && "fill triag line 2");
 		//pixels[index] = textures[l_2.tex_id].get_color(l_2.u, l_2.v);
 
-		if (l_1.pos.x == target1.pos.x && l_1.pos.y == target1.pos.y) {
+		float last = cur_dist1;
+		cur_dist1 = (target1.pos - l_1.pos).length();
+		//std::println("fill trig : cur_dist1 = {}, last_dist1 = {}", cur_dist1, last);
+		if (float_eq(cur_dist1, 0.f, 0.5f)) end1 = true;
+		if (float_eq(l_1.pos.x, target1.pos.x, 1.f) && float_eq(l_1.pos.y, target1.pos.y, 1.f)) {
 		    end1 = true;
 		}
 
-		if (l_2.pos.x == target2.pos.x && l_2.pos.y == target2.pos.y) {
+		last = cur_dist2;
+		cur_dist2 = (target2.pos - l_2.pos).length();
+		//std::println("fill trig : cur_dist2 = {}, last_dist2 = {}", cur_dist2, last);
+		//std::println("fill trig : target2 = {}, l_2 = {}", target2.to_str(), l_2.to_str());
+		//std::println("fill trig : target1 = {}, l_1 = {}", target1.to_str(), l_1.to_str());
+		//std::println("fill trig : stop1 = {}, stop2 = {}, dy2 = {}, sy2 = {}", stop1, stop2, dy2, sy2);
+		if (last < cur_dist2 || float_eq(cur_dist2, 0.f, 0.5f) ) break;
+		if (float_eq(l_2.pos.x, target2.pos.x, 5.f) && float_eq(l_2.pos.y, target2.pos.y, 5.f)) {
 		    break;
 		}
 
@@ -665,7 +704,9 @@ namespace d3 {
 		    u_step1 = dx1 != 0 ? (target1.u - l_1.u) / (float)dx1 : 0; 
 		    v_step1 = dy1 != 0 ? -(target1.v - l_1.v) / (float)dy1 : 0; 
 	  	    	
+		    //std::println("trig_fill end1: old dist1", dist1);
 		    dist1 = (target1.pos - l_1.pos).length();
+		    //std::println("trig_fill end1: new dist1 = {}", dist1);
 	  	    //dx1 = std::abs(vs[2]->pos.x - vs[1]->pos.x);
 	  	    //sx1 = (vs[1]->pos.x < vs[2]->pos.x) ? 1 : -1;
           
@@ -674,7 +715,7 @@ namespace d3 {
 
 		    err1 = dx1 + dy1;
 		    end1 = false;
-		    //std::println("trig_fill end1: l_1 = {}", l_1.to_str());
+		    std::println("trig_fill end1: l_1 = {}", l_1.to_str());
 		    
 		}
 
@@ -684,17 +725,12 @@ namespace d3 {
 		    if (e2_1 > dy1) {
 			err1 += dy1;
 			l_1.pos.x += sx1;
-			int dx_t = std::abs(target1.pos.x - l_1.pos.x);
-			//l_1.u = u1 * dx_t / dx1 + target1.u * (1.f - dx_t / dx1) ;
-			//l_1.u += u_step1;
+			//std::println("e2_1 > dy1: e2_1 = {}, dy1 = {}, \nl_1 = {}, err1 = {}", e2_1, dy1, l_1.to_str(), err1);
 		    }
 
 		    if (e2_1 < dx1) {
 			err1 += dx1;
 			l_1.pos.y += sy1;
-			int dy_t = std::abs(target1.pos.y - l_1.pos.y);
-			l_1.v += v_step1;
-			//l_1.v = v1 * dy_t / dy1 + target1.v * (1.f - dy_t / dy1) ;
 			stop1 = true;
 		    }
 		}
@@ -704,36 +740,32 @@ namespace d3 {
 		    if (e2_2 > dy2) {
 			err2 += dy2;
 			l_2.pos.x += sx2;
-			int dx_t = std::abs(target2.pos.x - l_2.pos.x);
-			//l_2.u += u_step2;
-			//l_2.u = u2 * dx_t / dx2 + target2.u * (1.f - dx_t / dx2) ;
 		    }
 
 		    if (e2_2 < dx2) {
 			err2 += dx2;
 			l_2.pos.y += sy2;
-			int dy_t = std::abs(target2.pos.y - l_2.pos.y);
-			//l_2.v += v_step2;
-			//l_2.v = v2 * dy_t / dy2 + target2.v * (1.f - dy_t / dy2) ;
-			stop2 = true;
+			if (!end1)
+			    stop2 = true;
 		    }
 		}
+
 		
 		
 		if (stop1 && stop2) {
 		    //std::println("fill_trig: draw: l_1 = {}, l_2 = {}", l_1.to_str(), l_2.to_str());
-		    float cur_dist1 = (target1.pos - l_1.pos).length();
+		    cur_dist1 = (target1.pos - l_1.pos).length();
 		    float t = 1.f - cur_dist1 / dist1;
-		    std::println("fill trig: t1 = {}", t);
-		    std::println("fill trig: dist1 = {}", dist1);
-		    std::println("fill trig: cur_dist1 = {}", cur_dist1);
-		    std::println("fill trig: l_1.u = {}, target1.u = {}", l_1.u, target1.u);
+		    //std::println("fill trig: t1 = {}", t);
+		    //std::println("fill trig: dist1 = {}", dist1);
+		    //std::println("fill trig: cur_dist1 = {}", cur_dist1);
+		    //std::println("fill trig: l_1.u = {}, target1.u = {}", l_1.u, target1.u);
 		    float u1 = lerpf(l_1.u, target1.u, t);
-		    std::println("fill trig: u1 = {}", u1);
+		    //std::println("fill trig: u1 = {}", u1);
 		    float v1 = lerpf(l_1.v, target1.v, t);
 
 		    t = 1.f - (target2.pos - l_2.pos).length() / dist2;
-		    std::println("fill trig: t2 = {}", t);
+		    //std::println("fill trig: t2 = {}", t);
 		    float u2 = lerpf(l_2.u, target2.u, t);
 		    float v2 = lerpf(l_2.v, target2.v, t);
 
@@ -742,7 +774,6 @@ namespace d3 {
 		    stop2 = false;
 		}
 	    }
-	//exit(9);
 	}
 	void fill_triangle_color(Vertex3C a, Vertex3C b, Vertex3C c) {
 	    int indices_sorted[3] = {0, 1, 2};
@@ -929,13 +960,13 @@ bool index_test(float u, float v, int width, int height) {
 int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     using namespace std::chrono_literals;
 
-    //if (!index_test(0, 0, 2048, 2048)) {
-    //    std::println("ERROR: index test failed");
-    //    return 1;
-    //}
+    assert(index_test(0, 0, 2048, 2048) && "index test failed");
+
     
     d3::Window window(window_width, window_height, window_title, window_class_name, hInstance);
     window.target_fps = 100;
+    d3::Object object;
+    window.objects.push_back(object);
 
     //window.vertices.push_back({{50, window_height / 2.f, 0.f}, 0.f, 0.f, 0});
     //window.vertices.push_back({{window_width / 2.f, window.height - 50.f, 0,}, 0.f, 1.f, 0});
@@ -943,9 +974,9 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
     //window.vertices.push_back({{window_width - 50, window_height / 2.f, 0}, 1.f, 1.f, 0});
 
     window.vertices.push_back({{50, 50, 0.f}, 0.f, 0.f, 0});
-    window.vertices.push_back({{50 , window.height - 50.f, 0,}, 0.f, 1.f, 0});
-    window.vertices.push_back({{window_width - 50, 50, 0}, 1.f, 0.f, 0});
-    window.vertices.push_back({{window_width - 50, window_height - 50, 0}, 1.f, 1.f, 0});
+    window.vertices.push_back({{200.f , window.height - 200.f, 0,}, 0.f, 1.f, 0});
+    window.vertices.push_back({{window_width - 200, 50, 0}, 1.f, 0.f, 0});
+    window.vertices.push_back({{window_width - 200, window_height - 200, 0}, 1.f, 1.f, 0});
 
     window.indeces.push_back(0);
     window.indeces.push_back(1);
@@ -964,7 +995,6 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
     std::chrono::milliseconds elapsed_total;
 
 
-
     while (message.message != WM_QUIT) {
 
         auto begin = std::chrono::steady_clock::now();
@@ -981,12 +1011,14 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 	    for (d3::Vertex3& v : window.vertices) {
 		//v.pos.x--;
 	    }
+	    angle += 0.01f;
 	}
 	if (GetAsyncKeyState(VK_RIGHT) & 0x8000) {
 	    rec.x += step;
 	    for (d3::Vertex3& v : window.vertices) {
 		//v.pos.x++;
 	    }
+	    angle -= 0.01f;
 	}
 	if (GetAsyncKeyState(VK_UP) & 0x8000) {
 	    rec.y--;
@@ -1023,8 +1055,6 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 	if (wait_time > 0ms) std::this_thread::sleep_for(wait_time);
 
 	elapsed_total = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin);
-
-	//std::println("total time = {}", elapsed_total);
 
     }
 
