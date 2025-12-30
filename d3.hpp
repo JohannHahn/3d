@@ -448,7 +448,7 @@ struct Window {
 	}
 
 	if (GetAsyncKeyState(VK_ESCAPE) & 0x8000) {
-	    PostMessage(hwnd, WM_CLOSE, 0, 0);
+	    //PostMessage(hwnd, WM_CLOSE, 0, 0);
 	    is_open = false;
 	}
     }
