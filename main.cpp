@@ -131,9 +131,9 @@ int main() {
 
 	window.begin_frame();
 
-	window.draw_rec(rec, {0xFF, 0x00, 0x22, 0xFF} );
+	d3::Renderer::draw_rec(window.pixels, window.width, window.height, rec, {0xFF, 0x00, 0x22, 0xFF} );
 
-	//window.draw_triangles();
+	window.draw_triangles();
 
 	window.render_screen();
 
