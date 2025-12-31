@@ -55,27 +55,27 @@ void controls(d3::Window& window) {
 	int step = 1;//speed * window.target_fps / 1000.f;
 	if (GetAsyncKeyState(VK_LEFT) & 0x8000) {
 	    rec.x -= step;
-	    for (d3::Vertex3& v : window.vertices) {
+	    for (d3::Vertex3& v : window.renderer.vertices) {
 		//v.pos.x--;
 	    }
 	    angle += 0.01f;
 	}
 	if (GetAsyncKeyState(VK_RIGHT) & 0x8000) {
 	    rec.x += step;
-	    for (d3::Vertex3& v : window.vertices) {
+	    for (d3::Vertex3& v : window.renderer.vertices) {
 		//v.pos.x++;
 	    }
 	    angle -= 0.01f;
 	}
 	if (GetAsyncKeyState(VK_UP) & 0x8000) {
 	    rec.y--;
-	    for (d3::Vertex3& v : window.vertices) {
+	    for (d3::Vertex3& v : window.renderer.vertices) {
 		//v.pos.y--;
 	    }
 	}
 	if (GetAsyncKeyState(VK_DOWN) & 0x8000) {
 	    rec.y++;
-	    for (d3::Vertex3& v : window.vertices) {
+	    for (d3::Vertex3& v : window.renderer.vertices) {
 		//v.pos.y++;
 	    }
 	}
@@ -83,13 +83,13 @@ void controls(d3::Window& window) {
 	}
 	if (GetAsyncKeyState(VK_RIGHT) & 0x8000) {
 	    rec.x += step;
-	    for (d3::Vertex3& v : window.vertices) {
+	    for (d3::Vertex3& v : window.renderer.vertices) {
 		//v.pos.x++;
 	    }
 	    angle -= 0.01f;
 	}
-	window.vertices[3].pos.x = rec.x;
-	window.vertices[3].pos.y = rec.y;
+	window.renderer.vertices[3].pos.x = rec.x;
+	window.renderer.vertices[3].pos.y = rec.y;
 }
 
 
@@ -98,32 +98,29 @@ int main() {
 
     assert(index_test(0, 0, 2048, 2048) && "index test failed");
 
-    timeBeginPeriod(1);
-
-    
     d3::Window window(window_width, window_height, window_title);
-    window.target_fps = 100;
+    d3::Renderer& renderer = window.renderer;
+    window.set_target_fps(100);
+
     d3::Object object;
-    window.objects.push_back(object);
+    renderer.objects.push_back(object);
     //window.vertices.push_back({{50, window_height / 2.f, 0.f}, 0.f, 0.f, 0});
     //window.vertices.push_back({{window_width / 2.f, window.height - 50.f, 0,}, 0.f, 1.f, 0});
     //window.vertices.push_back({{window_width / 2.f, 50, 0}, 1.f, 0.f, 0});
     //window.vertices.push_back({{window_width - 50, window_height / 2.f, 0}, 1.f, 1.f, 0});
 
-    window.vertices.push_back({{50, 50, 0.f}, 0.f, 0.f, 0});
-    window.vertices.push_back({{200.f , window.height - 200.f, 0,}, 0.f, 1.f, 0});
-    window.vertices.push_back({{window_width - 200, 50, 0}, 1.f, 0.f, 0});
-    window.vertices.push_back({{window_width - 200, window_height - 200, 0}, 1.f, 1.f, 0});
+    renderer.vertices.push_back({{50, 50, 0.f}, 0.f, 0.f, 0});
+    renderer.vertices.push_back({{200.f , window.height - 200.f, 0,}, 0.f, 1.f, 0});
+    renderer.vertices.push_back({{window_width - 200, 50, 0}, 1.f, 0.f, 0});
+    renderer.vertices.push_back({{window_width - 200, window_height - 200, 0}, 1.f, 1.f, 0});
 
-    window.indeces.push_back(0);
-    window.indeces.push_back(1);
-    window.indeces.push_back(2);
+    renderer.indeces.push_back(0);
+    renderer.indeces.push_back(1);
+    renderer.indeces.push_back(2);
 
-    window.indeces.push_back(1);
-    window.indeces.push_back(2);
-    window.indeces.push_back(3);
-
-
+    renderer.indeces.push_back(1);
+    renderer.indeces.push_back(2);
+    renderer.indeces.push_back(3);
 
     while(window.is_open) {
 
@@ -131,16 +128,21 @@ int main() {
 
 	window.begin_frame();
 
-	d3::Renderer::draw_rec(window.pixels, window.width, window.height, rec, {0xFF, 0x00, 0x22, 0xFF} );
+	renderer.draw_rec(rec, {0xFF, 0x00, 0x22, 0xFF} );
 
-	window.draw_triangles();
+	for(int i = 0; i < 200; ++i) {
+	    for(int j = 0; j < 200; ++j) {
+		renderer.tex.pixels[j + i * renderer.tex.width] = d3::GREEN.to_int();
+	    }
+	}
 
-	window.render_screen();
+	//window.draw_triangles();
+
+	window.draw();
 
 	window.end_frame();
 
     }
-
 
     return 0;
 }

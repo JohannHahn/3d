@@ -173,27 +173,29 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 
     //basically an image
     struct Texture {
-	uint32_t* pixels;
+	uint32_t* pixels = nullptr;
 	int width;
 	int height;
 	int comp_per_px = 4;
+
+	std::string to_str() const {
+	    return std::string("\npixels = ") + std::to_string((size_t)pixels) + "\nwidth = " + std::to_string(width)
+		+ "\nheight = " + std::to_string(height) + "\ncomp_per_px = " + std::to_string(comp_per_px);
+	}
+
 	bool load_from_file(const char* filename) {
+	    assert(pixels == nullptr);
 	    int n; 
 	    pixels = (uint32_t*)stbi_load(filename, &width, &height, &n, comp_per_px);
 	    return (pixels != nullptr);
 	}
 
-	~Texture() {
-	    if (pixels) delete[] pixels;
-	}
-
-	static Texture from_color(int width, int height, int color) {
-	    Texture t;
-	    t.pixels = new uint32_t[width * height];
-	    memset(t.pixels, color, sizeof(uint32_t) * width * height);
-	    t.width = width;
-	    t.height = height;
-	    return t;
+	void from_color(int width, int height, int color) {
+	    assert(pixels == nullptr);
+	    pixels = new uint32_t[width * height];
+	    std::memset(pixels, color, sizeof(uint32_t) * width * height);
+	    this->width = width;
+	    this->height = height;
 	}
 
 	uint32_t get_color(float u, float v) const {
@@ -301,6 +303,13 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	std::chrono::time_point<std::chrono::steady_clock> begin; 
 	std::chrono::milliseconds elapsed_total;
 
+	Timer() {
+	    timeBeginPeriod(1);
+	}
+	~Timer() {
+	    timeEndPeriod(1);
+	}
+
 	void start() {
 	    begin = std::chrono::steady_clock::now();
 	}
@@ -312,7 +321,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    return elapsed.count();
 	}
 
-	void buisy_wait(int mills) {
+	void busy_wait(int mills) {
 	    std::this_thread::sleep_for(std::chrono::milliseconds(mills));
 	}
 
@@ -320,13 +329,147 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 
     struct Renderer {
 
-	static void clear_pixels(uint32_t* pixels, int width, int height, Color ntc) {
-	    assert(pixels);
-	    std::memset(pixels, 0, width * height * sizeof(pixels[0]));
+	GLuint gl_tex;
+	GLuint program;
+	HGLRC gl_ctx;
+
+	std::vector<Vertex3> vertices;
+	std::vector<size_t> indeces;
+	std::vector<Texture> textures;
+	std::vector<Object> objects;
+
+	Texture tex;
+
+	void init_texture() {
+	    assert(tex.pixels && tex.width && tex.height);
+
+	    glGenTextures(1, &gl_tex);
+	    glBindTexture(GL_TEXTURE_2D, gl_tex);
+
+	    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+	    glTexImage2D(GL_TEXTURE_2D, 0,
+			 GL_RGBA8, tex.width, tex.height, 0,
+			 GL_RGBA, GL_UNSIGNED_BYTE,
+			 tex.pixels);
 	}
 
-	static void draw_rec(uint32_t* pixels, int width, int height, RectangleI rec, Color col) {
-	    assert(pixels);
+	void init_gl(HDC hdc) {
+
+	    PIXELFORMATDESCRIPTOR pfd = {};
+	    pfd.nSize = sizeof(pfd);
+	    pfd.nVersion = 1;
+	    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+	    pfd.iPixelType = PFD_TYPE_RGBA;
+	    pfd.cColorBits = 32;
+
+	    int pf = ChoosePixelFormat(hdc, &pfd);
+	    SetPixelFormat(hdc, pf, &pfd);
+
+	    gl_ctx = wglCreateContext(hdc);
+
+	    wglMakeCurrent(hdc, gl_ctx);
+
+	    if(!gladLoadGL()) {
+		std::println("{}", glGetError());	
+	    }
+
+	    glEnable(GL_TEXTURE_2D);
+
+	    glViewport(0, 0, tex.width, tex.height); 
+
+	    program = create_program(vertex_shader, fragment_shader);
+	    glUseProgram(program);
+
+	    GLint loc = glGetUniformLocation(program, "screenTex");
+	    glUniform1i(loc, 0); // Texture Unit 0
+
+	    glGenVertexArrays(1, &vao);
+	    glBindVertexArray(vao);
+
+	    init_texture();
+
+	    // vsync an;
+	    if (wglSwapIntervalEXT) wglSwapIntervalEXT(1);
+	}
+
+	void draw_tex(HDC hdc) {
+	    glClearColor(0,0,0,1);
+	    glClear(GL_COLOR_BUFFER_BIT);
+
+	    glBindTexture(GL_TEXTURE_2D, gl_tex);
+
+	    glTexSubImage2D(GL_TEXTURE_2D, 0, 0,0, tex.width, tex.height,
+			    GL_RGBA, GL_UNSIGNED_BYTE, tex.pixels);
+
+	    glDrawArrays(GL_TRIANGLES, 0, 3);
+
+	    SwapBuffers(hdc);
+	}
+
+	void push_object(Object obj, const Vertex3 vertices[], size_t count) {
+	    //for(int i = 0; i < count; ++i) {
+	    //    vertices.push_back(vertices[i]);
+	    //}     
+	}
+
+	void draw_object(const Object& obj) {
+	    assert(obj.indeces.size() % 3 == 0 && "Object indeces count is not divisible by 3");	    
+	    assert(tex.width && tex.height && tex.pixels);
+	    for (int i = 2; i < indeces.size(); i += 3) {
+		fill_triangle(tex.pixels, tex.width, tex.height, textures[vertices[indeces[i]].tex_id],
+			vertices[indeces[i - 2]], vertices[indeces[i - 1]], vertices[indeces[i]]);
+	    }
+	}
+
+	void draw_triangles() {
+	    assert(indeces.size() % 3 == 0 && "Indeces count is not divisible by 3");	    
+
+	    Mat4 rotation = Mat4::rotation_z(0.f);
+
+	    for (int i = 2; i < indeces.size(); i += 3) {
+		Vertex3 a = vertices[indeces[i - 2]];
+		Vertex3 b = vertices[indeces[i - 1]];
+		Vertex3 c = vertices[indeces[i]];
+		//std::println("before :\na = {}", a.to_str());
+		//std::println("b = {}", b.to_str());
+		//std::println("c = {}", c.to_str());
+
+		a.pos.multiply(rotation);
+		b.pos.multiply(rotation);
+		c.pos.multiply(rotation);
+		//if (z != 0.f) { 
+		//    a.pos.x /= z;
+		//    a.pos.y /= z;
+		//    b.pos.x /= z;
+		//    b.pos.x /= z;
+		//    c.pos.y /= z;
+		//    c.pos.y /= z;
+		//}
+
+		//std::println("after :\na = {}", a.to_str());
+		//std::println("b = {}", b.to_str());
+		//std::println("c = {}", c.to_str());
+		//fill_triangle(vertices[indeces[i - 2]], vertices[indeces[i - 1]], vertices[indeces[i]]);
+		Renderer::fill_triangle(tex.pixels, tex.width, tex.height, textures[a.tex_id], a, b, c);
+	    }
+	}
+
+	void clear_pixels(Color c) {
+	    clear_pixels(tex.pixels, tex.width, tex.height, c);
+	}
+
+	void clear_pixels(uint32_t* pixels, int width, int height, Color c) {
+	    assert(pixels && "clear_pixels: pixels = nullptr");
+	    std::memset(pixels, c.to_int(), width * height * sizeof(uint32_t));
+	}
+
+	void draw_rec(RectangleI rec, Color col) {
+	    draw_rec(tex.pixels, tex.width, tex.height, rec, col);
+	}
+	void draw_rec(uint32_t* pixels, int width, int height, RectangleI rec, Color col) {
+	    assert(pixels && "draw_rec: pixels = nullptr");
 	    if (rec.x >= width) return;
 	    if (rec.y >= height) return;
 
@@ -355,7 +498,10 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    }
 	}
 
-	static void draw_line_color(uint32_t* pixels, int width, int height, int x1, int y1, int x2, int y2, uint32_t color) {
+	void draw_line_color(int x1, int y1, int x2, int y2, uint32_t color) {
+	    draw_line_color(tex.pixels, tex.width, tex.height, x1, y1, x2, y2, color);
+	}
+	void draw_line_color(uint32_t* pixels, int width, int height, int x1, int y1, int x2, int y2, uint32_t color) {
 	    assert(pixels);
 
 	    //if (x1 < 0) x1 = 0;
@@ -394,8 +540,11 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    }
 	}
 
+	void draw_line_tex_h(int x1, int y1, int x2, float u1, float v1, float u2, float v2,  const Texture& tex) {
+	    draw_line_tex_h(tex.pixels, tex.width, tex.height, x1, y1, x2, u1, v1, u2, v2, tex);
+	}
 	// horizontal line
-	static void draw_line_tex_h(uint32_t* pixels, int width, int height, 
+	void draw_line_tex_h(uint32_t* pixels, int width, int height, 
 		int x1, int y1, int x2, float u1, float v1, float u2, float v2,  const Texture& tex) {
 
 	    if (y1 >= height || y1 < 0.f) return;
@@ -425,7 +574,11 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    //exit(0);
 	}
 
-	static void draw_line_blend(uint32_t* pixels, int width, int height, 
+	void draw_line_blend(int x1, int y1, int x2, int y2, Color start, Color end) {
+	    draw_line_blend(tex.pixels, tex.width, tex.height, x1, y1, x2, y2, start, end);
+	}
+
+	void draw_line_blend(uint32_t* pixels, int width, int height, 
 		int x1, int y1, int x2, int y2, Color start, Color end) {
 
 	    assert(pixels);
@@ -475,8 +628,11 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    }
 	}
 
+	void fill_triangle(const Texture& tex, Vertex3& a, Vertex3& b, Vertex3& c) {
+	    fill_triangle(tex.pixels, tex.width, tex.height, tex, a, b, c);
+	}
 
-	static void fill_triangle(uint32_t* pixels, int width, int height, const Texture& tex, 
+	void fill_triangle(uint32_t* pixels, int width, int height, const Texture& tex, 
 		Vertex3& a, Vertex3& b, Vertex3& c) {
 	    assert(pixels);
 	    int indices_sorted[3] = {0, 1, 2};
@@ -652,7 +808,10 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    }
 	}
 
-	static void fill_triangle_color(uint32_t* pixels, int width, int height, Vertex3C a, Vertex3C b, Vertex3C c) {
+	void fill_triangle_color(Vertex3C a, Vertex3C b, Vertex3C c) {
+	    fill_triangle_color(tex.pixels, tex.width, tex.height, a, b, c);
+	}
+	void fill_triangle_color(uint32_t* pixels, int width, int height, Vertex3C a, Vertex3C b, Vertex3C c) {
 	    assert(pixels);
 	    int indices_sorted[3] = {0, 1, 2};
 
@@ -786,32 +945,25 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
     };
 
     struct Window {
-	uint32_t* pixels = nullptr;
 	uint32_t width = 0;
 	uint32_t height = 0;
 	const char* name = nullptr;
 
-	Texture tex;
+	Renderer renderer;
 
-	GLuint gl_tex;
-	GLuint program;
-	HGLRC gl_ctx;
 	HWND hwnd;
 	HDC hdc;
 	MSG message;
 
-	uint64_t target_fps = 120;
-
 	bool is_open = false;
 	Timer timer;
 
-	std::vector<Vertex3> vertices;
-	std::vector<size_t> indeces;
-	std::vector<Texture> textures;
-	std::vector<Object> objects;
-	int frametime;
+	int frametime = ((uint64_t)(1000.f / 60.f));
+
 	Window(uint64_t width, uint64_t height, const char* name):
-	width(width), height(height), name(name), pixels(new uint32_t[width * height]){
+	width(width), height(height), name(name){
+
+	    renderer.tex.from_color(width, height, BLACK.to_int());
 
 	    HINSTANCE hInstance = GetModuleHandle(nullptr);
 	    
@@ -844,90 +996,33 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 			exit(0);
 	    } 
 
-	    init_gl();
+	    renderer.init_gl(hdc);
 	    
 	    Texture t;
 	    if(!t.load_from_file("res/johanndr.jpg")) {
 			std::println("ERROR: could not load johanndr");
 			exit(0);
 	    }
-	    textures.push_back(t);
-
-	    tex = Texture::from_color(width, height, GREEN.to_int());
+	    renderer.textures.push_back(t);
 
 	    show(SW_SHOW);
-
-	    frametime = ((uint64_t)(1000.f / target_fps));
 
 	    is_open = true;
 	}
 
 	~Window() {
 	    CloseWindow(hwnd);
-	    delete[] pixels;
-	    timeEndPeriod(1);
 	}
 
 	void show(int nCmdShow) {
 	    ShowWindow(hwnd, nCmdShow);
 	}
 
-	void init_texture() {
-	    glGenTextures(1, &gl_tex);
-	    glBindTexture(GL_TEXTURE_2D, gl_tex);
-
-	    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-	    glTexImage2D(GL_TEXTURE_2D, 0,
-			 GL_RGBA8, width, height, 0,
-			 GL_RGBA, GL_UNSIGNED_BYTE,
-			 pixels);
-	}
-
-	void init_gl() {
-
-	    PIXELFORMATDESCRIPTOR pfd = {};
-	    pfd.nSize = sizeof(pfd);
-	    pfd.nVersion = 1;
-	    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-	    pfd.iPixelType = PFD_TYPE_RGBA;
-	    pfd.cColorBits = 32;
-
-	    int pf = ChoosePixelFormat(hdc, &pfd);
-	    SetPixelFormat(hdc, pf, &pfd);
-
-	    gl_ctx = wglCreateContext(hdc);
-
-	    wglMakeCurrent(hdc, gl_ctx);
-
-	    if(!gladLoadGL()) {
-		std::println("{}", glGetError());	
-	    }
-
-	    glEnable(GL_TEXTURE_2D);
-
-	    glViewport(0, 0, width, height); 
-
-	    program = create_program(vertex_shader, fragment_shader);
-	    glUseProgram(program);
-
-	    GLint loc = glGetUniformLocation(program, "screenTex");
-	    glUniform1i(loc, 0); // Texture Unit 0
-
-	    glGenVertexArrays(1, &vao);
-	    glBindVertexArray(vao);
-
-	    init_texture();
-
-	    // vsync an;
-	    if (wglSwapIntervalEXT) wglSwapIntervalEXT(1);
-	}
 
 	void begin_frame() {
 
 	    timer.start();
-	    Renderer::clear_pixels(pixels, width, height, BLACK);
+	    renderer.clear_pixels(WHITE);
 
 	    while (PeekMessage(&message, nullptr, 0,0, PM_REMOVE)) {
 		TranslateMessage(&message);
@@ -943,77 +1038,24 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	void end_frame() {
 	    int delta_mills = timer.get_delta_mills();
 	    if (delta_mills < frametime) {
-		timer.buisy_wait(frametime - delta_mills);
+		timer.busy_wait(frametime - delta_mills);
 	    }
 	}
 	
 
-	void render_screen() {
-	    glClearColor(0,0,0,1);
-	    glClear(GL_COLOR_BUFFER_BIT);
-
-	    glBindTexture(GL_TEXTURE_2D, gl_tex);
-
-	    glTexSubImage2D(GL_TEXTURE_2D, 0, 0,0, width, height,
-			    GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-
-	    glDrawArrays(GL_TRIANGLES, 0, 3);
-
-	    SwapBuffers(hdc);
+	void draw() {
+	    renderer.draw_tex(hdc);
 	}
 
 
+	void set_target_fps(int fps) {
+	    frametime = ((uint64_t)(1000.f / fps));
+	}
 
 	bool in_window(PointI p) {
 	    return p.x >= 0 && p.x < width && p.y >= 0 && p.y < height;
 	}
 
-	void push_object(Object obj, const Vertex3 vertices[], size_t count) {
-	    //for(int i = 0; i < count; ++i) {
-	    //    vertices.push_back(vertices[i]);
-	    //}     
-	}
-
-	void draw_object(const Object& obj) {
-	    assert(obj.indeces.size() % 3 == 0 && "Object indeces count is not divisible by 3");	    
-	    for (int i = 2; i < indeces.size(); i += 3) {
-		Renderer::fill_triangle(pixels, width, height, textures[vertices[indeces[i]].tex_id],
-			vertices[indeces[i - 2]], vertices[indeces[i - 1]], vertices[indeces[i]]);
-	    }
-	}
-
-	void draw_triangles() {
-	    assert(indeces.size() % 3 == 0 && "Indeces count is not divisible by 3");	    
-
-	    Mat4 rotation = Mat4::rotation_z(0.f);
-
-	    for (int i = 2; i < indeces.size(); i += 3) {
-		Vertex3 a = vertices[indeces[i - 2]];
-		Vertex3 b = vertices[indeces[i - 1]];
-		Vertex3 c = vertices[indeces[i]];
-		//std::println("before :\na = {}", a.to_str());
-		//std::println("b = {}", b.to_str());
-		//std::println("c = {}", c.to_str());
-
-		a.pos.multiply(rotation);
-		b.pos.multiply(rotation);
-		c.pos.multiply(rotation);
-		//if (z != 0.f) { 
-		//    a.pos.x /= z;
-		//    a.pos.y /= z;
-		//    b.pos.x /= z;
-		//    b.pos.x /= z;
-		//    c.pos.y /= z;
-		//    c.pos.y /= z;
-		//}
-
-		//std::println("after :\na = {}", a.to_str());
-		//std::println("b = {}", b.to_str());
-		//std::println("c = {}", c.to_str());
-		//fill_triangle(vertices[indeces[i - 2]], vertices[indeces[i - 1]], vertices[indeces[i]]);
-		Renderer::fill_triangle(pixels, width, height, textures[a.tex_id], a, b, c);
-	    }
-	}
     };
 
 
