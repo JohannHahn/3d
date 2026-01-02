@@ -1036,6 +1036,8 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	}
 
 	void end_frame() {
+	    draw();
+
 	    int delta_mills = timer.get_delta_mills();
 	    if (delta_mills < frametime) {
 		timer.busy_wait(frametime - delta_mills);

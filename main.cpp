@@ -138,7 +138,6 @@ int main() {
 
 	//window.draw_triangles();
 
-	window.draw();
 
 	window.end_frame();
 
