@@ -83,13 +83,6 @@ void controls(d3::Window& window) {
 	if (GetAsyncKeyState('W') & 0x8000) {
 	}
 
-	if (GetAsyncKeyState(VK_RIGHT) & 0x8000) {
-	    rec.x += step;
-	    for (d3::Vertex3& v : window.renderer.vertices) {
-		//v.pos.x++;
-	    }
-	    angle -= 0.01f;
-	}
 	POINT mouse;
 	GetCursorPos(&mouse);
 	ScreenToClient(window.hwnd, &mouse);
@@ -144,9 +137,22 @@ int main() {
 
 	//window.draw_triangles();
 	//renderer.draw_line_color(window.width / 2.f, window.height / 2.f, rec.x, rec.y, d3::GREEN.to_int());
+	gmath::Mat4 rotation = gmath::Mat4::rotation_z(angle);
 	d3::Vertex3 a = {window.width / 2.f, 50, 0.f};
 	d3::Vertex3 b = {50, window.height - 50.f, 0.f};
-	d3::Vertex3 c = {(float)rec.x, (float)rec.y, 0.f};
+	d3::Vertex3 c = {window.width - 50.f, window_height - 50.f, 0.f};
+	gmath::Vec3 middle = {window.width / 2.f, window.height / 2.f, 0.f};
+	a.pos = a.pos - middle;
+	b.pos = b.pos - middle;
+	c.pos = c.pos - middle;
+
+	a.pos.multiply(rotation);
+	b.pos.multiply(rotation);
+	c.pos.multiply(rotation);
+
+	a.pos = a.pos + middle;
+	b.pos = b.pos + middle;
+	c.pos = c.pos + middle;
 
 	renderer.fill_triangle_color(a, b, c, d3::RED);
 

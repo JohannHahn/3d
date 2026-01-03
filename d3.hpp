@@ -725,15 +725,23 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 
 	    // horizontal line from p1 - target1, draw and skip
 	    if (line1.dy == 0) {
-		draw_line_color_h(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y, col);
+		//draw_line_color_h(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y, col);
 		p1 = target1;
 		target1 = *vs[2];
+		line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
 	    }
 
-	    while (!line1.done && !line2.done) {
+	    while (!line2.done) {
 
 		if (!line1.went_down) {
 		    line_next_pixel(line1, tex.width, tex.height);
+
+		    if (line1.done) {
+			p1 = target1;
+			target1 = *vs[2];
+			line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
+			line1.done = false;
+		    }
 		}
 
 		if (!line2.went_down) {
@@ -746,8 +754,6 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 
 		    draw_line_color_h(line1.pixel_x, line1.pixel_y, line2.pixel_x, line2.pixel_y, col);
 		}
-
-
 	    }
 	}
 
