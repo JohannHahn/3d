@@ -19,10 +19,10 @@
 
 namespace d3 {
 
-    typedef BOOL (WINAPI *wglSwapIntervalEXT_t)(int);
-    wglSwapIntervalEXT_t wglSwapIntervalEXT = (wglSwapIntervalEXT_t)wglGetProcAddress("wglSwapIntervalEXT");
+typedef BOOL (WINAPI *wglSwapIntervalEXT_t)(int);
+wglSwapIntervalEXT_t wglSwapIntervalEXT = (wglSwapIntervalEXT_t)wglGetProcAddress("wglSwapIntervalEXT");
 
-    GLuint vao;
+GLuint vao;
 
 const char* fragment_shader = 
 R"(#version 330 core
@@ -50,97 +50,102 @@ void main() {
 
 
 
-    GLuint compile_shader(GLenum type, const char* src) {
-	GLuint shader = glCreateShader(type);
-	glShaderSource(shader, 1, &src, nullptr);
-	glCompileShader(shader);
+GLuint compile_shader(GLenum type, const char* src) {
+    GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &src, nullptr);
+    glCompileShader(shader);
 
 
 
-	GLint ok;
-	glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
-	if (!ok) {
-	    char log[1024];
-	    glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
-	    MessageBoxA(0, log, "Shader Compile Error", MB_OK);
-	    glDeleteShader(shader);
+    GLint ok;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+	char log[1024];
+	glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
+	MessageBoxA(0, log, "Shader Compile Error", MB_OK);
+	glDeleteShader(shader);
+	return 0;
+    }
+    return shader;
+}
+
+GLuint create_program(const char* vs, const char* fs) {
+    GLuint v = compile_shader(GL_VERTEX_SHADER, vs);
+    GLuint f = compile_shader(GL_FRAGMENT_SHADER, fs);
+    GLuint prog = glCreateProgram();
+    glAttachShader(prog, v);
+    glAttachShader(prog, f);
+    glLinkProgram(prog);
+
+    GLint ok;
+    glGetProgramiv(prog, GL_LINK_STATUS, &ok);
+    if (!ok) {
+	char log[1024];
+	glGetProgramInfoLog(prog, sizeof(log), nullptr, log);
+	MessageBoxA(0, log, "Program Link Error", MB_OK);
+	glDeleteProgram(prog);
+	return 0;
+    }
+
+    glDeleteShader(v);
+    glDeleteShader(f);
+    return prog;
+}
+
+
+
+
+LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    switch (uMsg) {
+
+	case WM_DESTROY:
+	    PostQuitMessage(0);
 	    return 0;
-	}
-	return shader;
-    }
+	break;
 
-    GLuint create_program(const char* vs, const char* fs) {
-	GLuint v = compile_shader(GL_VERTEX_SHADER, vs);
-	GLuint f = compile_shader(GL_FRAGMENT_SHADER, fs);
-	GLuint prog = glCreateProgram();
-	glAttachShader(prog, v);
-	glAttachShader(prog, f);
-	glLinkProgram(prog);
-
-	GLint ok;
-	glGetProgramiv(prog, GL_LINK_STATUS, &ok);
-	if (!ok) {
-	    char log[1024];
-	    glGetProgramInfoLog(prog, sizeof(log), nullptr, log);
-	    MessageBoxA(0, log, "Program Link Error", MB_OK);
-	    glDeleteProgram(prog);
+	case WM_CLOSE:
+	    DestroyWindow(hwnd);
 	    return 0;
-	}
+	break;
 
-	glDeleteShader(v);
-	glDeleteShader(f);
-	return prog;
     }
+    return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
 
+enum Log_Level {
+    LOG_ALL, LOG_INFO, LOG_DEBUG, LOG_ERROR, 
+};
 
+struct RectangleI {
+    int x;
+    int y;
+    int width;
+    int height;
+};
 
+struct PointI {
+    int x;
+    int y;
 
-    LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	switch (uMsg) {
-
-	    case WM_DESTROY:
-		PostQuitMessage(0);
-		return 0;
-	    break;
-
-	}
-	return DefWindowProc(hwnd, uMsg, wParam, lParam);
+    void clip(int width, int height) {
+	if (x < 0) x = 0;
+	if (x >= width) x = width - 1;
+	if (y < 0) y = 0;
+	if (y >= height) y = height - 1;
     }
-
-    enum Log_Level {
-	LOG_ALL, LOG_INFO, LOG_DEBUG, LOG_ERROR, 
-    };
-
-    struct RectangleI {
-	int x;
-	int y;
-	int width;
-	int height;
-    };
-
-    struct PointI {
-	int x;
-	int y;
-
-	void clip(int width, int height) {
-	    if (x < 0) x = 0;
-	    if (x >= width) x = width - 1;
-	    if (y < 0) y = 0;
-	    if (y >= height) y = height - 1;
-	}
-    };
+};
 
 
-    struct Color {
-	uint8_t r; 
-	uint8_t g;
-	uint8_t b;
-	uint8_t a;
-	int to_int() const {
-	    // yolo
-	    return *(int*)this;
-	}
-    };
+struct Color {
+    uint8_t r; 
+    uint8_t g;
+    uint8_t b;
+    uint8_t a;
+    int to_int() const {
+	// yolo
+	return *(int*)this;
+    }
+};
 
 constexpr d3::Color BLACK = {0, 0, 0, 255};
 constexpr d3::Color RED = {255, 0, 0, 255};
@@ -156,7 +161,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
     };
 
     struct Vertex3 {
-	Vec3 pos;
+	gmath::Vec3 pos;
 	float u;
 	float v;
 	uint32_t tex_id;
@@ -167,8 +172,8 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 
     struct Object{
 	std::vector<size_t> indeces;
-	Vec4 position;
-	Mat4 mat;
+	gmath::Vec4 position;
+	gmath::Mat4 mat;
     };
 
     //basically an image
@@ -201,8 +206,8 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	uint32_t get_color(float u, float v) const {
 	    if (std::isnan(u)) u = 0.f;
 	    if (std::isnan(v)) v = 0.f;
-	    u = clamp(u, 0.f, 1.f);
-	    v = clamp(v, 0.f, 1.f);
+	    u = gmath::clamp(u, 0.f, 1.f);
+	    v = gmath::clamp(v, 0.f, 1.f);
 	    if(!(u <= 1.f && u >= 0.f && v <= 1.f && v >= 0.f)) {
 		std::println("uv wrong: {} {}", u, v);
 		//assert(0 && "uv wrong in get color");
@@ -340,6 +345,13 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 
 	Texture tex;
 
+	~Renderer() {
+	    if (tex.pixels) {
+		delete[] tex.pixels;
+		tex.pixels = nullptr;
+	    }
+	}
+
 	void init_texture() {
 	    assert(tex.pixels && tex.width && tex.height);
 
@@ -424,6 +436,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	}
 
 	void draw_triangles() {
+	    using namespace gmath;
 	    assert(indeces.size() % 3 == 0 && "Indeces count is not divisible by 3");	    
 
 	    Mat4 rotation = Mat4::rotation_z(0.f);
@@ -484,7 +497,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    if (rec.x + rec.width >= width) rec.width = width - 1 - rec.x;
 	    if (rec.y + rec.height >= height) rec.height = height - 1 - rec.y;
 
-	    uint32_t c = *(uint32_t*)(&col);
+	    uint32_t c = col.to_int();
 
 	    for(int y = rec.y; y < rec.y + rec.height; ++y) {
 		for(int x = rec.x; x < rec.x + rec.width; ++x) {
@@ -498,49 +511,90 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    }
 	}
 
-	void draw_line_color(int x1, int y1, int x2, int y2, uint32_t color) {
-	    draw_line_color(tex.pixels, tex.width, tex.height, x1, y1, x2, y2, color);
+	struct Line_Data {
+	    int x1, y1, x2, y2, dx, sx, dy, sy, err, err2, pixel_x, pixel_y; 
+	    bool done = false;
+	    bool went_down = false;
+
+	    void set_initial(int x1, int y1, int x2, int y2) {
+		this->x1 = x1;
+		this->y1 = y1;
+		this->x2 = x2;
+		this->y2 = y2;
+
+		dx = std::abs(x2 - x1);
+		sx = (x1 < x2) ? 1 : -1;
+
+		dy = -std::abs(y2 - y1);
+		sy = (y1 < y2) ? 1 : -1;
+
+		err = dx + dy;
+
+		if (x1 == x2 && y1 == y2) {
+		    done = true;
+		}
+		pixel_x = x1;
+		pixel_y = y1;
+	    }
+	};
+
+	void line_next_pixel(Line_Data& line, int width, int height) {
+
+	    line.went_down = false;
+
+	    if (line.x1 == line.x2 && line.y1 == line.y2) {
+		line.done = true;
+		return;
+	    }
+
+	    line.err2 = line.err << 1;
+
+	    if (line.err2 > line.dy) {
+		line.err += line.dy;
+		line.x1 += line.sx;
+	    }
+
+	    if (line.err2 < line.dx) {
+		line.err += line.dx;
+		line.y1 += line.sy;
+		line.went_down = true;
+	    }
+
+	    line.pixel_x = line.x1;
+	    line.pixel_y = line.y1;
 	}
-	void draw_line_color(uint32_t* pixels, int width, int height, int x1, int y1, int x2, int y2, uint32_t color) {
+
+	void draw_line_color(Line_Data& line, uint32_t color) {
+	    draw_line_color(tex.pixels, tex.width, tex.height, line, color);
+	}
+
+	void draw_line_color(int x1, int y1, int x2, int y2, uint32_t color) {
+	    Line_Data line;
+	    line.set_initial(x1, y1, x2, y2);
+	    draw_line_color(tex.pixels, tex.width, tex.height, line, color);
+	}
+
+	void draw_line_color(uint32_t* pixels, int width, int height, Line_Data& line, uint32_t color) {
 	    assert(pixels);
 
-	    //if (x1 < 0) x1 = 0;
-	    //if (x1 >= width) x1 = width - 1;
-	    //if (y1 < 0) y1 = 0;
-	    //if (y2 >= height) y1 = height - 1;
+	    //std::println("line : x1 = {}, y1 = {}, x2 = {}, y2 = {}", line.x1, line.y1, line.x2, line.y2);
+	    //std::println("width = {}, height = {}", width, height);
 
-	    int dx = std::abs(x2 - x1);
-	    int sx = (x1 < x2) ? 1 : -1;
-
-	    int dy = -std::abs(y2 - y1);
-	    int sy = (y1 < y2) ? 1 : -1;
-
-	    int err = dx + dy;
-	    int e2;
-
-	    while (true) {
-		if ((uint32_t)(x1 + y1 * width) < width * height)
-		    pixels[x1 + y1 * width] = color;
-
-		if (x1 == x2 && y1 == y2)
-		    break;
-
-		e2 = err << 1;
-
-		if (e2 > dy) {
-		    err += dy;
-		    x1 += sx;
+	    while (!line.done) {
+		size_t index = line.pixel_x + line.pixel_y * width;
+		if (index < width * height) {
+		    pixels[index] = color;
+		    //std::println("accepted pixel = {} {}", line.pixel_x, line.pixel_y);
+		}
+		else {
+		    std::println("rejected pixel = {} {}", line.pixel_x, line.pixel_y);
 		}
 
-		if (e2 < dx) {
-		    err += dx;
-		    y1 += sy;
-		}
-		//std::println("p1 : {} {} , p2 : {} {}, index = {}", x1, y1, x2, y2, index);
+		line_next_pixel(line, width, height);
 	    }
 	}
 
-	void draw_line_tex_h(int x1, int y1, int x2, float u1, float v1, float u2, float v2,  const Texture& tex) {
+	void draw_line_tex_h(int x1, int y1, int x2, float u1, float v1, float u2, float v2) {
 	    draw_line_tex_h(tex.pixels, tex.width, tex.height, x1, y1, x2, u1, v1, u2, v2, tex);
 	}
 	// horizontal line
@@ -574,6 +628,27 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    //exit(0);
 	}
 
+	void draw_line_color_h(int x1, int y1, int x2, int y2, Color col) {
+	    draw_line_color_h(tex.pixels, tex.width, tex.height, x1, y1, x2, col);
+	}
+
+	void draw_line_color_h(uint32_t* pixels, int width, int height, int x1, int y1, int x2, Color col) {
+
+	    if (y1 >= height || y1 < 0.f) return;
+	    assert(pixels);
+
+	    int dx = std::abs(x2 - x1);
+	    int sx = (x1 < x2) ? 1 : -1;
+
+
+	    for (int i = 0; i < dx; ++i) {
+
+		if (x1 < width && x1 >= 0.f)
+		    pixels[x1 + y1 * width] = col.to_int();
+		x1 += sx;
+	    }
+	}
+
 	void draw_line_blend(int x1, int y1, int x2, int y2, Color start, Color end) {
 	    draw_line_blend(tex.pixels, tex.width, tex.height, x1, y1, x2, y2, start, end);
 	}
@@ -582,11 +657,6 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 		int x1, int y1, int x2, int y2, Color start, Color end) {
 
 	    assert(pixels);
-
-	    //if (x1 < 0) x1 = 0;
-	    //if (x1 >= width) x1 = width - 1;
-	    //if (y1 < 0) y1 = 0;
-	    //if (y2 >= height) y1 = height - 1;
 	    
 
 	    int dx = std::abs(x2 - x1);
@@ -597,7 +667,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 
 	    int err = dx + dy;
 	    int e2;
-	    Vec3 v = {(float)x2 - x1, (float)y2 - y1, 0};
+	    gmath::Vec3 v = {(float)x2 - x1, (float)y2 - y1, 0};
 	    float length = v.length();
 	    float t = 0.f;
 
@@ -628,12 +698,66 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    }
 	}
 
+	void fill_triangle_color(Vertex3& a, Vertex3& b, Vertex3& c, Color col) {
+	    assert(tex.pixels);
+
+	    Line_Data line1;
+	    Line_Data line2;
+
+	    int indices_sorted[3] = {0, 1, 2};
+
+	    sort_y(a, b, c, indices_sorted);
+	    Vertex3* vs[3] = {
+			(indices_sorted[0] == 0 ? &a : (indices_sorted[0] == 1 ? &b : &c)),
+			(indices_sorted[1] == 0 ? &a : (indices_sorted[1] == 1 ? &b : &c)),
+			(indices_sorted[2] == 0 ? &a : (indices_sorted[2] == 1 ? &b : &c)),
+	    };
+	    // set start point lowest vertex (cursed)
+	    Vertex3 p1 = *vs[0];
+	    Vertex3 p2 = p1;
+
+	    // choose target (end points of lines) based on lowest vertex by sorted index
+	    Vertex3 target1 = *vs[1];
+	    Vertex3 target2 = *vs[2];
+
+	    line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
+	    line2.set_initial(p2.pos.x, p2.pos.y, target2.pos.x, target2.pos.y);
+
+	    // horizontal line from p1 - target1, draw and skip
+	    if (line1.dy == 0) {
+		draw_line_color_h(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y, col);
+		p1 = target1;
+		target1 = *vs[2];
+	    }
+
+	    while (!line1.done && !line2.done) {
+
+		if (!line1.went_down) {
+		    line_next_pixel(line1, tex.width, tex.height);
+		}
+
+		if (!line2.went_down) {
+		    line_next_pixel(line2, tex.width, tex.height);
+		}
+
+		if (line1.went_down && line2.went_down) {
+		    line1.went_down = false;
+		    line2.went_down = false;
+
+		    draw_line_color_h(line1.pixel_x, line1.pixel_y, line2.pixel_x, line2.pixel_y, col);
+		}
+
+
+	    }
+	}
+
 	void fill_triangle(const Texture& tex, Vertex3& a, Vertex3& b, Vertex3& c) {
 	    fill_triangle(tex.pixels, tex.width, tex.height, tex, a, b, c);
 	}
 
 	void fill_triangle(uint32_t* pixels, int width, int height, const Texture& tex, 
 		Vertex3& a, Vertex3& b, Vertex3& c) {
+	    using namespace gmath;
 	    assert(pixels);
 	    int indices_sorted[3] = {0, 1, 2};
 	    //std::println("fill trig: a = {}, b = {}, c = {}", a.to_str(), b.to_str(), c.to_str());
@@ -812,6 +936,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    fill_triangle_color(tex.pixels, tex.width, tex.height, a, b, c);
 	}
 	void fill_triangle_color(uint32_t* pixels, int width, int height, Vertex3C a, Vertex3C b, Vertex3C c) {
+	    using namespace gmath;
 	    assert(pixels);
 	    int indices_sorted[3] = {0, 1, 2};
 
@@ -1012,6 +1137,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 
 	~Window() {
 	    CloseWindow(hwnd);
+	    PostQuitMessage(0);
 	}
 
 	void show(int nCmdShow) {
@@ -1022,15 +1148,14 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	void begin_frame() {
 
 	    timer.start();
-	    renderer.clear_pixels(WHITE);
+	    //renderer.clear_pixels(WHITE);
 
 	    while (PeekMessage(&message, nullptr, 0,0, PM_REMOVE)) {
 		TranslateMessage(&message);
 		DispatchMessage(&message);
 	    }
 
-	    if (GetAsyncKeyState(VK_ESCAPE) & 0x8000) {
-		//PostMessage(hwnd, WM_CLOSE, 0, 0);
+	    if (GetAsyncKeyState(VK_ESCAPE) & 0x8000 || message.message == WM_QUIT) {
 		is_open = false;
 	    }
 	}

@@ -12,7 +12,7 @@ constexpr uint64_t window_height = 1024;
 float angle = 0.f;
 float z = 0.f;
 
-d3::RectangleI rec = {window_width - 200, 150, 100, 100};
+d3::RectangleI rec = {window_width - 200, 150, 10, 10};
 
 bool index_test(float u, float v, int width, int height) {
     size_t index = u * (width - 1) + v * (height - 1) * width;
@@ -52,7 +52,7 @@ bool index_test(float u, float v, int width, int height) {
 void controls(d3::Window& window) {
 
 	int speed = 500;
-	int step = 1;//speed * window.target_fps / 1000.f;
+	int step = 10;//speed * window.target_fps / 1000.f;
 	if (GetAsyncKeyState(VK_LEFT) & 0x8000) {
 	    rec.x -= step;
 	    for (d3::Vertex3& v : window.renderer.vertices) {
@@ -68,19 +68,21 @@ void controls(d3::Window& window) {
 	    angle -= 0.01f;
 	}
 	if (GetAsyncKeyState(VK_UP) & 0x8000) {
-	    rec.y--;
+	    rec.y -= step;
 	    for (d3::Vertex3& v : window.renderer.vertices) {
 		//v.pos.y--;
 	    }
 	}
 	if (GetAsyncKeyState(VK_DOWN) & 0x8000) {
-	    rec.y++;
+	    rec.y += step;
 	    for (d3::Vertex3& v : window.renderer.vertices) {
 		//v.pos.y++;
 	    }
 	}
+
 	if (GetAsyncKeyState('W') & 0x8000) {
 	}
+
 	if (GetAsyncKeyState(VK_RIGHT) & 0x8000) {
 	    rec.x += step;
 	    for (d3::Vertex3& v : window.renderer.vertices) {
@@ -88,8 +90,16 @@ void controls(d3::Window& window) {
 	    }
 	    angle -= 0.01f;
 	}
-	window.renderer.vertices[3].pos.x = rec.x;
-	window.renderer.vertices[3].pos.y = rec.y;
+	POINT mouse;
+	GetCursorPos(&mouse);
+	ScreenToClient(window.hwnd, &mouse);
+
+	if ((unsigned)mouse.x < window.width &&
+	    (unsigned)mouse.y < window.height)
+	{
+	    rec.x = mouse.x;
+	    rec.y = mouse.y;
+	}
 }
 
 
@@ -100,7 +110,7 @@ int main() {
 
     d3::Window window(window_width, window_height, window_title);
     d3::Renderer& renderer = window.renderer;
-    window.set_target_fps(100);
+    window.set_target_fps(60);
 
     d3::Object object;
     renderer.objects.push_back(object);
@@ -128,16 +138,17 @@ int main() {
 
 	window.begin_frame();
 
+	renderer.clear_pixels(d3::BLACK);
+
 	renderer.draw_rec(rec, {0xFF, 0x00, 0x22, 0xFF} );
 
-	for(int i = 0; i < 200; ++i) {
-	    for(int j = 0; j < 200; ++j) {
-		renderer.tex.pixels[j + i * renderer.tex.width] = d3::GREEN.to_int();
-	    }
-	}
-
 	//window.draw_triangles();
+	//renderer.draw_line_color(window.width / 2.f, window.height / 2.f, rec.x, rec.y, d3::GREEN.to_int());
+	d3::Vertex3 a = {window.width / 2.f, 50, 0.f};
+	d3::Vertex3 b = {50, window.height - 50.f, 0.f};
+	d3::Vertex3 c = {(float)rec.x, (float)rec.y, 0.f};
 
+	renderer.fill_triangle_color(a, b, c, d3::RED);
 
 	window.end_frame();
 
