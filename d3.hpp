@@ -204,10 +204,12 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	}
 
 	uint32_t get_color(float u, float v) const {
-	    if (std::isnan(u)) u = 0.f;
-	    if (std::isnan(v)) v = 0.f;
-	    u = gmath::clamp(u, 0.f, 1.f);
-	    v = gmath::clamp(v, 0.f, 1.f);
+	    assert(!std::isnan(u));
+	    assert(!std::isnan(v));
+	    assert(u >= 0.f && u <= 1.f);
+	    assert(v >= 0.f && v <= 1.f);
+	    //u = gmath::clamp(u, 0.f, 1.f);
+	    //v = gmath::clamp(v, 0.f, 1.f);
 	    if(!(u <= 1.f && u >= 0.f && v <= 1.f && v >= 0.f)) {
 		std::println("uv wrong: {} {}", u, v);
 		//assert(0 && "uv wrong in get color");
@@ -222,6 +224,45 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 		return 0;
 	    }
 	    return pixels[index];
+	}
+    };
+
+    struct Line_Data {
+	int x1, y1, x2, y2, dx, sx, dy, sy, err, err2, pixel_x, pixel_y; 
+	float xf, yf;
+
+	bool done = false;
+	bool went_down = false;
+
+	void set_initial(int x1, int y1, int x2, int y2) {
+	    this->x1 = x1;
+	    this->y1 = y1;
+	    this->x2 = x2;
+	    this->y2 = y2;
+	    done = false;
+
+	    dx = std::abs(x2 - x1);
+	    sx = (x1 < x2) ? 1 : -1;
+
+	    dy = -std::abs(y2 - y1);
+	    sy = (y1 < y2) ? 1 : -1;
+
+	    err = dx + dy;
+
+	    if (x1 == x2 && y1 == y2) {
+		done = true;
+	    }
+
+	    pixel_x = x1;
+	    pixel_y = y1;
+	    xf = x1;
+	    yf = y1;
+	}
+
+	float length() {
+	    float x = (float)x2 - xf;
+	    float y = (float)y2 - yf;
+	    return sqrtf(x * x + y * y);
 	}
     };
 
@@ -449,9 +490,9 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 		//std::println("b = {}", b.to_str());
 		//std::println("c = {}", c.to_str());
 
-		a.pos.multiply(rotation);
-		b.pos.multiply(rotation);
-		c.pos.multiply(rotation);
+		//a.pos.multiply(rotation);
+		//b.pos.multiply(rotation);
+		//c.pos.multiply(rotation);
 		//if (z != 0.f) { 
 		//    a.pos.x /= z;
 		//    a.pos.y /= z;
@@ -465,7 +506,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 		//std::println("b = {}", b.to_str());
 		//std::println("c = {}", c.to_str());
 		//fill_triangle(vertices[indeces[i - 2]], vertices[indeces[i - 1]], vertices[indeces[i]]);
-		Renderer::fill_triangle(tex.pixels, tex.width, tex.height, textures[a.tex_id], a, b, c);
+		fill_triangle_tex(a, b, c);
 	    }
 	}
 
@@ -511,32 +552,6 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    }
 	}
 
-	struct Line_Data {
-	    int x1, y1, x2, y2, dx, sx, dy, sy, err, err2, pixel_x, pixel_y; 
-	    bool done = false;
-	    bool went_down = false;
-
-	    void set_initial(int x1, int y1, int x2, int y2) {
-		this->x1 = x1;
-		this->y1 = y1;
-		this->x2 = x2;
-		this->y2 = y2;
-
-		dx = std::abs(x2 - x1);
-		sx = (x1 < x2) ? 1 : -1;
-
-		dy = -std::abs(y2 - y1);
-		sy = (y1 < y2) ? 1 : -1;
-
-		err = dx + dy;
-
-		if (x1 == x2 && y1 == y2) {
-		    done = true;
-		}
-		pixel_x = x1;
-		pixel_y = y1;
-	    }
-	};
 
 	void line_next_pixel(Line_Data& line, int width, int height) {
 
@@ -552,11 +567,13 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    if (line.err2 > line.dy) {
 		line.err += line.dy;
 		line.x1 += line.sx;
+		line.xf += line.sx;
 	    }
 
 	    if (line.err2 < line.dx) {
 		line.err += line.dx;
 		line.y1 += line.sy;
+		line.yf += line.sy;
 		line.went_down = true;
 	    }
 
@@ -564,42 +581,101 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    line.pixel_y = line.y1;
 	}
 
-	void draw_line_color(Line_Data& line, uint32_t color) {
+	void draw_line_color(Line_Data& line, Color color) {
 	    draw_line_color(tex.pixels, tex.width, tex.height, line, color);
 	}
 
-	void draw_line_color(int x1, int y1, int x2, int y2, uint32_t color) {
+	void draw_line_color(int x1, int y1, int x2, int y2, Color color) {
 	    Line_Data line;
 	    line.set_initial(x1, y1, x2, y2);
 	    draw_line_color(tex.pixels, tex.width, tex.height, line, color);
 	}
 
-	void draw_line_color(uint32_t* pixels, int width, int height, Line_Data& line, uint32_t color) {
+	void draw_line_color(uint32_t* pixels, int width, int height, Line_Data& line, Color color) {
 	    assert(pixels);
 
 	    //std::println("line : x1 = {}, y1 = {}, x2 = {}, y2 = {}", line.x1, line.y1, line.x2, line.y2);
 	    //std::println("width = {}, height = {}", width, height);
 
+	    if (line.dx == 0) {
+		draw_line_vert(line.x1, line.y1, line.y2, color);
+	    }
+
+	    if (line.dy == 0) {
+		draw_line_hor_col(line.x1, line.y1, line.y2, color);
+	    }
+
 	    while (!line.done) {
 		size_t index = line.pixel_x + line.pixel_y * width;
 		if (index < width * height) {
-		    pixels[index] = color;
+		    pixels[index] = color.to_int();
 		    //std::println("accepted pixel = {} {}", line.pixel_x, line.pixel_y);
 		}
 		else {
 		    std::println("rejected pixel = {} {}", line.pixel_x, line.pixel_y);
+		    assert(0);
 		}
 
 		line_next_pixel(line, width, height);
 	    }
 	}
 
-	void draw_line_tex_h(int x1, int y1, int x2, float u1, float v1, float u2, float v2) {
-	    draw_line_tex_h(tex.pixels, tex.width, tex.height, x1, y1, x2, u1, v1, u2, v2, tex);
+	void draw_line_vert(int x1, int y1, int y2, Color color) {
+	    draw_line_vert(tex.pixels, tex.width, tex.height, x1, y1, y2, color.to_int());
 	}
 	// horizontal line
-	void draw_line_tex_h(uint32_t* pixels, int width, int height, 
-		int x1, int y1, int x2, float u1, float v1, float u2, float v2,  const Texture& tex) {
+	void draw_line_vert(uint32_t* pixels, int width, int height, 
+		int x1, int y1, int y2, uint32_t col) {
+
+	    if (y1 >= height || y1 < 0.f) return;
+	    assert(pixels);
+
+	    int dy = std::abs(y2 - y1);
+	    int sy = (y1 < y2) ? 1 : -1;
+
+	    for (int i = 0; i < dy; ++i) {
+
+		if (y1 < height && y1 >= 0.f)
+		    pixels[x1 + y1 * width] = col;
+
+		y1 += sy;
+	    }
+	}
+
+	void draw_line_vert(int x1, int y1, int x2, float u1, float v1, float u2, float v2, const Texture& tex) {
+	    draw_line_vert(tex.pixels, tex.width, tex.height, x1, y1, x2, u1, v1, u2, v2, tex);
+	}
+	// horizontal line
+	void draw_line_vert(uint32_t* pixels, int width, int height, 
+		int x1, int y1, int y2, float u1, float v1, float u2, float v2,  const Texture& tex) {
+	    if (y1 >= height || y1 < 0.f) return;
+	    assert(pixels);
+
+	    int dy = std::abs(y2 - y1);
+	    int sy = (y1 < y2) ? 1 : -1;
+
+	    float u_step = dy == 0 ? 0 : (u2 - u1) / dy;
+	    float v_step = dy == 0 ? 0 : (v2 - v1) / dy;
+
+	    for (int i = 0; i < dy; ++i) {
+
+		if (y1 < width && y1 >= 0.f)
+		    pixels[x1 + y1 * width] = tex.get_color(u1, v1);
+
+		y1 += sy;
+
+		u1 += u_step;
+		v1 += v_step;
+	    }
+	}
+
+	void draw_line_hor_tex(int x1, int y1, int x2, float u1, float v1, float u2, float v2, int tex_id) {
+	    assert(tex_id < textures.size());
+	    draw_line_hor_tex(tex.pixels, tex.width, tex.height, x1, y1, x2, u1, v1, u2, v2, textures[tex_id]);
+	}
+	// horizontal line
+	void draw_line_hor_tex(uint32_t* pixels, int width, int height, 
+		int x1, int y1, int x2, float u1, float v1, float u2, float v2, const Texture& tex) {
 
 	    if (y1 >= height || y1 < 0.f) return;
 	    assert(pixels);
@@ -616,23 +692,16 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 		    pixels[x1 + y1 * width] = tex.get_color(u1, v1);
 		x1 += sx;
 
-		//float cur_dx = std::abs(x2 - x1);
-		//float t = 1.f - cur_dx / dx;
-		//std::println("draw line: t = {}", t);
-		//u1 = lerpf(u1, u2, t);
-		//v1 = lerpf(v1, v2, t);
 		u1 += u_step;
 		v1 += v_step;
 	    }
-	    //std::println("after draw_line_tex: u1 = {}, v1 = {}", u1, v1);
-	    //exit(0);
 	}
 
-	void draw_line_color_h(int x1, int y1, int x2, int y2, Color col) {
-	    draw_line_color_h(tex.pixels, tex.width, tex.height, x1, y1, x2, col);
+	void draw_line_hor_col(int x1, int y1, int x2, Color col) {
+	    draw_line_hor_col(tex.pixels, tex.width, tex.height, x1, y1, x2, col.to_int());
 	}
 
-	void draw_line_color_h(uint32_t* pixels, int width, int height, int x1, int y1, int x2, Color col) {
+	void draw_line_hor_col(uint32_t* pixels, int width, int height, int x1, int y1, int x2, uint32_t col) {
 
 	    if (y1 >= height || y1 < 0.f) return;
 	    assert(pixels);
@@ -640,11 +709,11 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    int dx = std::abs(x2 - x1);
 	    int sx = (x1 < x2) ? 1 : -1;
 
-
 	    for (int i = 0; i < dx; ++i) {
 
 		if (x1 < width && x1 >= 0.f)
-		    pixels[x1 + y1 * width] = col.to_int();
+		    pixels[x1 + y1 * width] = col;
+
 		x1 += sx;
 	    }
 	}
@@ -698,6 +767,82 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    }
 	}
 
+	void fill_triangle_tex(Vertex3& a, Vertex3& b, Vertex3& c) {
+	    assert(tex.pixels);
+
+	    Line_Data line1;
+	    Line_Data line2;
+
+	    int indices_sorted[3] = {0, 1, 2};
+
+	    sort_y(a, b, c, indices_sorted);
+	    Vertex3* vs[3] = {
+			(indices_sorted[0] == 0 ? &a : (indices_sorted[0] == 1 ? &b : &c)),
+			(indices_sorted[1] == 0 ? &a : (indices_sorted[1] == 1 ? &b : &c)),
+			(indices_sorted[2] == 0 ? &a : (indices_sorted[2] == 1 ? &b : &c)),
+	    };
+	    // set start point lowest vertex (cursed)
+	    Vertex3 p1 = *vs[0];
+	    Vertex3 p2 = p1;
+
+	    // choose target (end points of lines) based on lowest vertex by sorted index
+	    Vertex3 target1 = *vs[1];
+	    Vertex3 target2 = *vs[2];
+
+	    line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
+	    line2.set_initial(p2.pos.x, p2.pos.y, target2.pos.x, target2.pos.y);
+
+	    float dist1 = line1.length();
+	    float dist2 = line2.length();
+
+	    // horizontal line from p1 - target1, draw and skip
+	    if (line1.dy == 0) {
+	        draw_line_hor_tex(p1.pos.x, p1.pos.y, target1.pos.x, p1.u, p1.v, target1.u, target1.v, a.tex_id);
+	        p1 = *vs[1];
+	        target1 = *vs[2];
+	        line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
+		dist1 = line1.length();
+	    }
+
+	    while (!line2.done) {
+
+		if (!line1.went_down) {
+		    line_next_pixel(line1, tex.width, tex.height);
+
+		    if (line1.done) {
+			//std::println("BEFORE:\np1: {}, {}", line1.x1, line1.y1);
+			//std::println("target1: {}", target1.to_str());
+			p1 = *vs[1];
+			target1 = *vs[2];
+			line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
+			dist1 = line1.length();
+			//std::println("AFTER:\ndist1 = {}, v.length = {}", dist1, v.length());
+			//std::println("p1: {}, {}", line1.x1, line1.y1);
+			//std::println("target1: {}", target1.to_str());
+		    }
+		}
+
+		if (!line2.went_down) {
+		    line_next_pixel(line2, tex.width, tex.height);
+		}
+
+		if (line1.went_down && line2.went_down) {
+		    line1.went_down = false;
+		    line2.went_down = false;
+
+		    float t = 1.f - line1.length() / dist1;
+		    float u1 = gmath::lerpf(p1.u, target1.u, t);
+		    float v1 = gmath::lerpf(p1.v, target1.v, t);
+
+		    t = 1.f - line2.length() / dist2;
+		    float u2 = gmath::lerpf(p2.u, target2.u, t);
+		    float v2 = gmath::lerpf(p2.v, target2.v, t);
+
+		    draw_line_hor_tex(line1.pixel_x, line1.pixel_y, line2.pixel_x, u1, v1, u2, v2, a.tex_id);
+		}
+	    }
+	}
+
 	void fill_triangle_color(Vertex3& a, Vertex3& b, Vertex3& c, Color col) {
 	    assert(tex.pixels);
 
@@ -725,7 +870,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 
 	    // horizontal line from p1 - target1, draw and skip
 	    if (line1.dy == 0) {
-		//draw_line_color_h(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y, col);
+		draw_line_hor_col(p1.pos.x, p1.pos.y, target1.pos.x, col);
 		p1 = target1;
 		target1 = *vs[2];
 		line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
@@ -752,7 +897,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 		    line1.went_down = false;
 		    line2.went_down = false;
 
-		    draw_line_color_h(line1.pixel_x, line1.pixel_y, line2.pixel_x, line2.pixel_y, col);
+		    draw_line_hor_col(line1.pixel_x, line1.pixel_y, line2.pixel_x, col);
 		}
 	    }
 	}
@@ -930,7 +1075,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 		    float u2 = lerpf(l_2.u, target2.u, t);
 		    float v2 = lerpf(l_2.v, target2.v, t);
 
-		    Renderer::draw_line_tex_h(pixels, width, height, 
+		    draw_line_hor_tex(pixels, width, height, 
 			    l_1.pos.x, l_1.pos.y, l_2.pos.x, u1, v1, u2, v2, tex);
 		    stop1 = false;
 		    stop2 = false;

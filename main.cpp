@@ -53,6 +53,11 @@ void controls(d3::Window& window) {
 
 	int speed = 500;
 	int step = 10;//speed * window.target_fps / 1000.f;
+		      //
+	if (GetAsyncKeyState(VK_SPACE) & 0x8000) {
+	    angle += gmath::PI / 8.f;
+	}
+
 	if (GetAsyncKeyState(VK_LEFT) & 0x8000) {
 	    rec.x -= step;
 	    for (d3::Vertex3& v : window.renderer.vertices) {
@@ -81,6 +86,10 @@ void controls(d3::Window& window) {
 	}
 
 	if (GetAsyncKeyState('W') & 0x8000) {
+	    z += 0.01f;
+	}
+	if (GetAsyncKeyState('S') & 0x8000) {
+	    z -= 0.01f;
 	}
 
 	POINT mouse;
@@ -97,25 +106,23 @@ void controls(d3::Window& window) {
 
 
 int main() {
-//int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-
-    assert(index_test(0, 0, 2048, 2048) && "index test failed");
+    //assert(index_test(0, 0, 2048, 2048) && "index test failed");
 
     d3::Window window(window_width, window_height, window_title);
     d3::Renderer& renderer = window.renderer;
     window.set_target_fps(60);
 
     d3::Object object;
-    renderer.objects.push_back(object);
+    //renderer.objects.push_back(object);
     //window.vertices.push_back({{50, window_height / 2.f, 0.f}, 0.f, 0.f, 0});
     //window.vertices.push_back({{window_width / 2.f, window.height - 50.f, 0,}, 0.f, 1.f, 0});
     //window.vertices.push_back({{window_width / 2.f, 50, 0}, 1.f, 0.f, 0});
     //window.vertices.push_back({{window_width - 50, window_height / 2.f, 0}, 1.f, 1.f, 0});
 
     renderer.vertices.push_back({{50, 50, 0.f}, 0.f, 0.f, 0});
-    renderer.vertices.push_back({{200.f , window.height - 200.f, 0,}, 0.f, 1.f, 0});
-    renderer.vertices.push_back({{window_width - 200, 50, 0}, 1.f, 0.f, 0});
-    renderer.vertices.push_back({{window_width - 200, window_height - 200, 0}, 1.f, 1.f, 0});
+    renderer.vertices.push_back({{50.f , window.height - 50.f, 0,}, 0.f, 1.f, 0});
+    renderer.vertices.push_back({{window_width - 50.f, 50.f, 0}, 1.f, 0.f, 0});
+    renderer.vertices.push_back({{window_width - 50.f, window_height - 50.f, 0}, 1.f, 1.f, 0});
 
     renderer.indeces.push_back(0);
     renderer.indeces.push_back(1);
@@ -135,26 +142,40 @@ int main() {
 
 	renderer.draw_rec(rec, {0xFF, 0x00, 0x22, 0xFF} );
 
-	//window.draw_triangles();
+	//renderer.draw_triangles();
 	//renderer.draw_line_color(window.width / 2.f, window.height / 2.f, rec.x, rec.y, d3::GREEN.to_int());
 	gmath::Mat4 rotation = gmath::Mat4::rotation_z(angle);
-	d3::Vertex3 a = {window.width / 2.f, 50, 0.f};
-	d3::Vertex3 b = {50, window.height - 50.f, 0.f};
-	d3::Vertex3 c = {window.width - 50.f, window_height - 50.f, 0.f};
+	//rotation.multiply(gmath::Mat4::rotation_y(angle));
+	//rotation.multiply(gmath::Mat4::rotation_x(angle));
+	 d3::Vertex3 a = {{50, 50, z}, 0.f, 0.f, 0};
+         d3::Vertex3 b = {{50.f , window.height - 50.f, z,}, 0.f, 1.f, 0};
+         d3::Vertex3 c = {{window_width - 50.f, 50.f, z}, 1.f, 0.f, 0};
+         d3::Vertex3 d = {{window_width - 50.f, window_height - 50.f, z}, 1.f, 1.f, 0};
+
+
 	gmath::Vec3 middle = {window.width / 2.f, window.height / 2.f, 0.f};
 	a.pos = a.pos - middle;
 	b.pos = b.pos - middle;
 	c.pos = c.pos - middle;
+	d.pos = d.pos - middle;
 
 	a.pos.multiply(rotation);
 	b.pos.multiply(rotation);
 	c.pos.multiply(rotation);
+	d.pos.multiply(rotation);
+
+	a.pos.project();
+	b.pos.project();
+	c.pos.project();
+	d.pos.project();
 
 	a.pos = a.pos + middle;
 	b.pos = b.pos + middle;
 	c.pos = c.pos + middle;
+	d.pos = d.pos + middle;
 
-	renderer.fill_triangle_color(a, b, c, d3::RED);
+	renderer.fill_triangle_tex(a, b, c);
+	renderer.fill_triangle_tex(b, c, d);
 
 	window.end_frame();
 
