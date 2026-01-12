@@ -2,6 +2,7 @@
 #define D3_HPP
 
 #include <cstring>
+#include <fstream>
 #include <glad/glad.h>
 #include <print>
 #include <stdint.h>
@@ -25,14 +26,14 @@ wglSwapIntervalEXT_t wglSwapIntervalEXT = (wglSwapIntervalEXT_t)wglGetProcAddres
 GLuint vao;
 
 static constexpr size_t cube_uvs_size = 4 * 2;
-float cube_uvs[cube_uvs_size] = {
+constexpr float cube_uvs[cube_uvs_size] = {
     0.f, 0.f,
     0.f, 1.f, 
     1.f, 0.f,  
     1.f, 1.f
 };
 
-const char* fragment_shader = 
+constexpr const char* fragment_shader = 
 R"(#version 330 core
 in vec2 uv;
 uniform sampler2D screenTex;
@@ -43,7 +44,7 @@ void main() {
 }
 )";
 
-const char* vertex_shader = 
+constexpr const char* vertex_shader = 
 R"(#version 330 core
 out vec2 uv;
 void main() {
@@ -55,6 +56,8 @@ void main() {
     uv = pos * 0.5 + 0.5;
 }
 )";
+
+
 
 
 
@@ -160,6 +163,7 @@ constexpr d3::Color RED = {255, 0, 0, 255};
 constexpr d3::Color GREEN = {0, 255, 0, 255};
 constexpr d3::Color BLUE = {0, 0, 255, 255};
 constexpr d3::Color WHITE = {255, 255, 255, 255};
+constexpr d3::Color PURPLE = {255, 0, 255, 255};
 
     struct Vertex3C {
 	float x;
@@ -174,6 +178,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    return std::string("pos: ") + pos.to_str() + std::string(", uv: ");// + std::to_string(u) + ", " + std::to_string(v) + ", tex_id: " + std::to_string(tex_id);
 	}
     };
+
 
     struct Vertex3UV {
 	gmath::Vec3 pos;
@@ -191,6 +196,17 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	size_t tex_id;
     };
 
+    struct IndexRecord {
+	size_t v_index;
+	size_t uv_index;
+	size_t n_index;
+    };
+
+    struct Face {
+	IndexRecord vs[3];
+	size_t tex_index;
+    };
+
     struct Transform {
 	gmath::Vec3 position;
 	gmath::Vec3 angles;
@@ -200,7 +216,6 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	size_t start = 0;
 	size_t count = 0;
     };
-
 
     struct Object {
 	size_t id;
@@ -353,6 +368,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	else if (t > 1.f) t = 1.f;
 
 	float inv_t = 1.f - t;
+	// TODO: blend alpha too?
 	Color res = {
 			(uint8_t)(start.r * inv_t + end.r * t), 
 			(uint8_t)(start.g * inv_t + end.g * t),
@@ -391,6 +407,10 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 
     };
 
+    static inline constexpr bool is_digit(char c) {
+	return (c >= '0' && c <= '9');
+    }
+
 
     struct Renderer {
 
@@ -399,18 +419,21 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	HGLRC gl_ctx;
 
 	std::vector<Vertex3> vertices;
-	std::vector<size_t> vert_indeces;
-
 	std::vector<float> uvs;
-	std::vector<size_t> uv_indeces;
-
+	std::vector<gmath::Vec3> normals;
 	std::vector<Texture> textures;
-	std::vector<int> tex_ids;
-
-
-	std::vector<Object> objects;
 	std::vector<Transform> transforms;
+	std::vector<Object> objects;
 	std::vector<IndexRange> ranges;
+	std::vector<Face> faces;
+
+	//std::vector<size_t> vert_indeces;
+
+	//std::vector<size_t> uv_indeces;
+
+	//std::vector<int> tex_ids;
+
+
 
 	Texture tex;
 
@@ -435,9 +458,116 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	}
 
 
+	bool loadOBJ(const char* filepath, size_t& obj_id, Transform t = {0}, int tex_id = -1) {
+	    std::ifstream file(filepath);
+	    if (file.bad()) return false;
+
+	    obj_id = push_object(t);
+
+	    std::string line;
+	    std::string start;
+	    std::vector<Vertex3> verts;
+	    std::vector<Face> faces;
+	    std::vector<float> uvs;
+	    std::vector<gmath::Vec3> normals;
+
+	    Face face;
+	    Vertex3 vert;
+	    gmath::Vec3 normal;
+	    float u, v;
+	    IndexRange range;
+	    range.start = faces.size();
+	    // offset indeces to where we push new data
+	    size_t v_index_start = this->vertices.size();
+	    size_t uv_index_start = this->uvs.size();
+	    size_t n_index_start = this->normals.size();
+
+	    while(std::getline(file, line)) {
+		std::istringstream iss(line);
+		start = "";
+		iss >> start;
+
+		if (start.starts_with("vt")) {
+		    iss >> u;		    
+		    uvs.emplace_back(u); 
+		    iss >> v;		    
+		    uvs.emplace_back(v); 
+		}
+		else if (start.starts_with("vn")) {
+		    if (!(iss >> normal.x) ||
+			!(iss >> normal.y) ||
+			!(iss >> normal.z)) {
+			std::println("error on line: {}", line);
+			std::println("start = {}", start);
+			std::println("normal = {}", normal.to_str());
+			continue;
+
+		    }
+		    normals.emplace_back(normal);
+
+		}
+		else if (start.starts_with("v")) {
+		    if (!(iss >> vert.pos.x) ||
+			!(iss >> vert.pos.y) ||
+			!(iss >> vert.pos.z)) {
+			std::println("error on line: {}", line);
+			std::println("start = {}", start);
+			std::println("vertex = {}", vert.to_str());
+			continue;
+
+		    }
+		    verts.emplace_back(vert);
+		}
+		else if (start.starts_with("f")) {
+		    std::println("parsing face: {}", line);
+		    int cur = 0;
+		    char c = line[0];
+		    // only works for f 1/2/3 etc, f v_index/uv_index/normal_index
+		    // find first two numbers
+		    std::println("before loop");
+		    for(int vertex = 0; vertex < 3; ++vertex) {
+			iss >> face.vs[vertex].v_index;
+			face.vs[vertex].v_index += v_index_start;
+			iss >> c;
+			assert(c == '/');
+			iss >> face.vs[vertex].uv_index;
+			face.vs[vertex].uv_index += uv_index_start;
+			iss >> c;
+			assert(c == '/');
+			iss >> face.vs[vertex].n_index;
+			face.vs[vertex].n_index += n_index_start;
+			std::println("loop iteration end");
+		    }
+		    face.tex_index = tex_id;
+		    faces.emplace_back(face);
+		}
+	    }
+
+	    std::println("LoadOBJ: after reading in file:\nvertices read = {}, uvs read = {}\nnormals read = {}, faces read = {}", verts.size(), uvs.size(), normals.size(), faces.size());
+
+	    //obj_push_verts(obj_id, verts.data(), verts.size(), v_indeces.data(), v_indeces.size());
+	    //obj_push_uvs(obj_id, uvs.data(), uvs.size(), uv_indeces.data());
+
+	    push_vertices(verts.data(), verts.size());
+	    push_uvs(uvs.data(), uvs.size());
+	    push_normals(normals.data(), normals.size());
+	    push_faces(faces.data(), faces.size());
+
+	    range.count = faces.size();
+	    push_object(t, range);
+
+	    return true;
+	}
+
+	Transform get_cam_transform() {
+	    return transforms[camera.id] ;
+	}
+
+	void set_cam_transform(const Transform& t) {
+	    transforms[camera.id] = t; 
+	}
 
 	size_t push_cube(float side = 1.f, Transform t = {0}, size_t tex_id = 0) {
-
 
 	    static constexpr size_t v_size = 8;
 	    Vertex3 vertices[v_size] = {0}; 
@@ -451,90 +581,158 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    vertices[6] = {.pos = { side / 2.f,  side / 2.f,  side / 2.f}};//, .u = 1.f, .v = 0.f, .tex_id = 0};
 	    vertices[7] = {.pos = { side / 2.f, -side / 2.f,  side / 2.f}};//, .u = 1.f, .v = 1.f, .tex_id = 0};
 
-	    static constexpr size_t i_size = 6 * 6;
-	    size_t indeces[i_size] = {
+	    push_vertices(vertices, v_size);
+	    push_uvs(cube_uvs, cube_uvs_size);
 
-		4, 0, 6,  6, 0, 2, 
+	    //static constexpr size_t i_size = 6 * 6;
+	    //assert(i_size % 3 == 0);
 
-		4, 5, 0,  0, 5, 1,
+	    //size_t indeces[i_size] = {
 
-		2, 3, 6,  6, 3, 7,
+	    //    4, 0, 6,  6, 0, 2, 
 
-		1, 5, 3,  3, 5, 7,
+	    //    4, 5, 0,  0, 5, 1,
 
-		6, 7, 4,  4, 7, 5,
+	    //    2, 3, 6,  6, 3, 7,
 
-		0, 1, 2,  2, 1, 3,
+	    //    1, 5, 3,  3, 5, 7,
 
+	    //    6, 7, 4,  4, 7, 5,
+
+	    //    0, 1, 2,  2, 1, 3,
+
+	    //};
+
+	    static constexpr size_t n_count = 6;
+	    static constexpr gmath::Vec3 normals[n_count] = {
+		{0, 0, -1}, {0, 0, 1},
+		{1, 0, 0}, {-1, 0, 0},
+		{0, 1, 0}, {0, -1, 0}
+	    };
+
+	    push_normals(normals, n_count);
+
+
+	    //size_t uvs_indeces[i_size] = { };
+	    //for (int i = 0; i < i_size - 5; i += 6) {
+	    //    uvs_indeces[i] = 0;
+	    //    uvs_indeces[i + 1] = 1;
+	    //    uvs_indeces[i + 2] = 2;
+
+	    //    uvs_indeces[i + 3] = 2;
+	    //    uvs_indeces[i + 4] = 1;
+	    //    uvs_indeces[i + 5] = 3;
+	    //} 
+
+    //uvs:
+    //0.f, 0.f,
+    //0.f, 1.f, 
+    //1.f, 0.f,  
+    //1.f, 1.f
+	    static constexpr size_t face_count = 6 * 2;
+	    Face faces[face_count] = {
+		//front
+		{{{0, 0, 0}, {1, 1, 0}, {2, 2, 0}}, tex_id},
+		{{{2, 2, 0}, {1, 1, 0}, {3, 3, 0}}, tex_id},
+		//back
+		{{{6, 0, 1}, {7, 1, 1}, {4, 2, 1}}, tex_id},
+		{{{4, 2, 1}, {7, 1, 1}, {5, 3, 1}}, tex_id},
+		//top
+		{{{4, 0, 4}, {0, 1, 4}, {6, 2, 4}}, tex_id},
+		{{{6, 2, 4}, {0, 1, 4}, {2, 3, 4}}, tex_id},
+		//bottom
+		{{{1, 0, 5}, {5, 1, 5}, {3, 2, 5}}, tex_id},
+		{{{3, 2, 5}, {5, 1, 5}, {7, 3, 5}}, tex_id},
+		//left
+		{{{4, 0, 3}, {5, 1, 3}, {0, 2, 3}}, tex_id},
+		{{{0, 2, 3}, {5, 1, 3}, {1, 3, 3}}, tex_id},
+		//right
+		{{{2, 0, 2}, {3, 1, 2}, {6, 2, 2}}, tex_id},
+		{{{6, 2, 2}, {3, 1, 2}, {7, 3, 2}}, tex_id},
 	    };
 	    
+	    IndexRange range;
+	    range.start = this->faces.size();
+	    range.count = face_count;
 
-	    //push_object(obj, vertices, v_size, indeces, i_size, uvs, &tex_id, 1);
-	    size_t id = push_object(t);
-	    obj_push_verts(id, vertices, v_size, indeces, i_size);
+	    push_faces(faces, face_count);
+	    
 
-	    size_t uvs_indeces[i_size] = { };
-	    for (int i = 0; i < i_size - 5; i += 6) {
-		uvs_indeces[i] = 0;
-		uvs_indeces[i + 1] = 1;
-		uvs_indeces[i + 2] = 2;
-
-		uvs_indeces[i + 3] = 2;
-		uvs_indeces[i + 4] = 1;
-		uvs_indeces[i + 5] = 3;
-	    } 
-
-	    obj_push_uvs(id, cube_uvs, cube_uvs_size, uvs_indeces);
-	    obj_push_tex_id(id, tex_id);
+	    size_t id = push_object(t, range);
 
 	    return id;
 
 	}
 
-	size_t push_object(Transform t) {
+	size_t push_object(Transform t = {0}, IndexRange range = {0}) {
 	    assert(ranges.size() == objects.size());
 	    assert(transforms.size() == objects.size());
-	    // might need change
-	    assert(tex_ids.size() == objects.size());
 
 	    size_t id = objects.size();
+
 	    objects.push_back({id});
 	    transforms.push_back(t);
-
-	    ranges.push_back({});
-	    tex_ids.push_back(-1);
+	    ranges.push_back(range);
 
 	    return id;
 	}	    
-
-	void obj_push_verts(size_t id, Vertex3* verts, size_t v_count, size_t* indeces, size_t i_count) {
-	    assert(id < objects.size());
+	
+	void push_vertices(const Vertex3* verts, size_t count) {
 	    assert(verts);
-	    assert(indeces);
-
-	    size_t i_start = vertices.size();
-	    for (int i = 0; i < v_count; ++i) {
+	    for (int i = 0; i < count; ++i) {
 		vertices.push_back(verts[i]);
 	    }
-
-	    IndexRange& range = ranges[id];
-	    range.start = vert_indeces.size();
-	    range.count = i_count;
-
-	    for (int i = 0; i < i_count; ++i) {
-		vert_indeces.push_back(i_start + indeces[i]);
-	    }
-
-	    
 	}
 	
-	void obj_push_tex_id(size_t obj_id, size_t tex_id) {
-	    assert(obj_id < objects.size());
-	    assert(tex_id < textures.size());
-	    assert(tex_ids.size() == objects.size());
-
-	    tex_ids[obj_id] = tex_id;
+	void push_uvs(const float* uvs, size_t count) {
+	    assert(uvs);
+	    for (int i = 0; i < count; ++i) {
+		this->uvs.push_back(uvs[i]);
+	    }
 	}
+
+	void push_normals(const gmath::Vec3* normals, size_t count) {
+	    assert(normals);
+	    for (int i = 0; i < count; ++i) {
+		this->normals.push_back(normals[i]);
+	    }
+	}
+
+	void push_faces(const Face* faces, size_t count) {
+	    assert(faces);
+	    for (int i = 0; i < count; ++i) {
+		this->faces.push_back(faces[i]);
+	    }
+	}
+
+	//void obj_push_verts(size_t id, const Vertex3* verts, size_t v_count, const size_t* indeces, size_t i_count) {
+	//    assert(id < objects.size());
+	//    assert(verts);
+	//    assert(indeces);
+
+	//    size_t i_start = vertices.size();
+	//    for (int i = 0; i < v_count; ++i) {
+	//	vertices.push_back(verts[i]);
+	//    }
+
+	//    IndexRange& range = ranges[id];
+	//    range.start = vert_indeces.size();
+	//    range.count = i_count;
+
+	//    for (int i = 0; i < i_count; ++i) {
+	//	vert_indeces.push_back(i_start + indeces[i]);
+	//    }
+
+	//    
+	//}
+	//
+	//void obj_push_tex_id(size_t obj_id, size_t tex_id) {
+	//    assert(obj_id < objects.size());
+	//    //assert(tex_id < textures.size());
+	//    assert(tex_ids.size() == objects.size());
+
+	//    tex_ids[obj_id] = tex_id;
+	//}
 	
 	void obj_set_transform(size_t obj_id, const Transform& t) {
 	    assert(obj_id < objects.size());
@@ -545,28 +743,28 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 
 	}
 
-	void obj_push_uvs(size_t id, float* uvs, size_t uvs_count, size_t* uvs_indeces) {
-	    assert(id < objects.size());
-	    assert(uvs);
-	    assert(uvs_indeces);
+	//void obj_push_uvs(size_t id, const float* uvs, size_t uvs_count, const size_t* uvs_indeces) {
+	//    assert(id < objects.size());
+	//    assert(uvs);
+	//    assert(uvs_indeces);
 
-	    IndexRange& range = ranges[id];
+	//    IndexRange& range = ranges[id];
 
-	    // can only push uvs if vertices + indeces already pushed
-	    assert(vert_indeces.size() == uv_indeces.size() + range.count);
+	//    // can only push uvs if vertices + indeces already pushed
+	//    assert(vert_indeces.size() == uv_indeces.size() + range.count);
 
-	    // 2 floats per index
-	    size_t i_start = this->uvs.size() / 2;
-	    
-	    for (int i = 0; i < uvs_count; ++i) {
-		this->uvs.push_back(uvs[i]);
-	    }
-	    for (int i = 0; i < range.count; ++i) {
-		uv_indeces.push_back(i_start + uvs_indeces[i]);
-	    }
+	//    // 2 floats per index
+	//    size_t i_start = this->uvs.size() / 2;
+	//    
+	//    for (int i = 0; i < uvs_count; ++i) {
+	//	this->uvs.push_back(uvs[i]);
+	//    }
+	//    for (int i = 0; i < range.count; ++i) {
+	//	uv_indeces.push_back(i_start + uvs_indeces[i]);
+	//    }
 
-	    assert(vert_indeces.size() == uv_indeces.size());
-	}
+	//    assert(vert_indeces.size() == uv_indeces.size());
+	//}
 
 	void init_texture() {
 	    assert(tex.pixels && tex.width && tex.height);
@@ -656,28 +854,27 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 
 	void draw_triangles() {
 	    using namespace gmath;
-	    assert(vert_indeces.size() % 3 == 0 && "Indeces count is not divisible by 3");	    
-	    assert(vert_indeces.size() == uv_indeces.size());
 
 	    reset_z();
 
 	    const Transform& camera_transform = transforms[camera.id];
 	    Mat4 camera_model = Mat4::get_model(camera_transform.position, camera_transform.angles);
 	    Mat4 view = Mat4::get_model(camera_transform.position * -1, camera_transform.angles * -1);
+	    Vec3 camera_dir = {0, 0, 1};
 
 	    // camera always at id = 0
 	    size_t obj_id = 1;
 	    //std::println("camera model : \n{}", camera_model.to_str());
 	    //std::println("view : \n{}", view.to_str());
 
-	    for (int i = 2; i < vert_indeces.size(); i += 3) {
-		//if (i > ranges[obj_id].start && i >= ranges[obj_id].start + ranges[obj_id].count) {
-		//    obj_id++;
-		//}
+	    for (int i = 0; i < faces.size(); i++) {
+	    //for (int i = 2; i < vert_indeces.size(); i += 3) {
+		if (i >= (ranges[obj_id].start + ranges[obj_id].count) ) {
+		    obj_id++;
+		}
 
 		assert(obj_id < objects.size());
 		assert(obj_id < transforms.size());
-		assert(obj_id < tex_ids.size());
 		    
 		const Object& obj = objects[obj_id];
 		const Transform& obj_transform = transforms[obj_id];	
@@ -685,31 +882,62 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 		//std::println("model : \n{}", model.to_str());
 		Mat4 mv = view * model;
 		//std::println("mv: \n{}", mv.to_str());
-		size_t tex_id = 0;
-		if (tex_ids[obj_id] > 0) tex_id = tex_ids[obj_id];
+		const Face& face = faces[i];
 
+		// TODO: DOESNT WORK
+		// backface culling
+		Vec3 normal = normals[face.vs[0].n_index];
+		std::string normal_initial = normal.to_str();
+		normal.multiply(mv);
+		normal = normal.project(tex.width, tex.height);
+		normal = gmath::normalize(normal);
+		float dot = gmath::dot(camera_dir, normal);
 
-		TriangleUV tri = {
+		if (dot <= 0.f) {
+		    std::println("normal initial = {}", normal_initial);
+		    std::println("normal transformed = {}", normal.to_str());
+		    std::println("camera_dir dot normal = {}", dot);
+		    break;
+		} 
 
-		    .a = { .pos = vertices[vert_indeces[i - 2]].pos, .u = uvs[uv_indeces[(i - 2)] * 2], .v = uvs[uv_indeces[(i - 2)] * 2 + 1]},
-		    .b = { .pos = vertices[vert_indeces[i - 1]].pos, .u = uvs[uv_indeces[(i - 1)] * 2], .v = uvs[uv_indeces[(i - 1)] * 2 + 1]},
-		    .c = { .pos = vertices[vert_indeces[i]].pos, .u = uvs[uv_indeces[i] * 2], .v = uvs[uv_indeces[i] * 2 + 1]},
-		    .tex_id = tex_id
-		};
+		int tex_id = face.tex_index;
 
+		if (tex_id < 0) {
 
+		    Vertex3 a = vertices[face.vs[0].v_index];
+		    Vertex3 b = vertices[face.vs[1].v_index];
+		    Vertex3 c = vertices[face.vs[2].v_index];
+		    a.pos.multiply(mv);
+		    b.pos.multiply(mv);
+		    c.pos.multiply(mv);
 
-		tri.a.pos.multiply(mv);
-		tri.b.pos.multiply(mv);
-		tri.c.pos.multiply(mv);
+		    a.pos = a.pos.project(tex.width, tex.height);
+		    b.pos = b.pos.project(tex.width, tex.height);
+		    c.pos = c.pos.project(tex.width, tex.height);
 
+		    fill_triangle_color(a, b, c, PURPLE);
 
-		tri.a.pos = tri.a.pos.project(tex.width, tex.height);
-		tri.b.pos = tri.b.pos.project(tex.width, tex.height);
-		tri.c.pos = tri.c.pos.project(tex.width, tex.height);
+		} 
+		else {
 
-		fill_triangle_tex(tri);
+		    TriangleUV tri = {
 
+			.a = { .pos = vertices[face.vs[0].v_index].pos, .u = uvs[face.vs[0].uv_index * 2], .v = uvs[face.vs[0].uv_index * 2 + 1]},
+			.b = { .pos = vertices[face.vs[1].v_index].pos, .u = uvs[face.vs[1].uv_index * 2], .v = uvs[face.vs[1].uv_index * 2 + 1]},
+			.c = { .pos = vertices[face.vs[2].v_index].pos, .u = uvs[face.vs[2].uv_index * 2], .v = uvs[face.vs[2].uv_index * 2 + 1]},
+			.tex_id = (size_t)tex_id
+		    };
+
+		    tri.a.pos.multiply(mv);
+		    tri.b.pos.multiply(mv);
+		    tri.c.pos.multiply(mv);
+
+		    tri.a.pos = tri.a.pos.project(tex.width, tex.height);
+		    tri.b.pos = tri.b.pos.project(tex.width, tex.height);
+		    tri.c.pos = tri.c.pos.project(tex.width, tex.height);
+
+		    fill_triangle_tex(tri);
+		}
 	    }
 	}
 
@@ -887,8 +1115,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 
 	    int dx = std::abs(x2 - x1);
 	    int sx = (x1 < x2) ? 1 : -1;
-	    float dz = std::abs(z2 - z1);
-	    float z_step = dz == 0 ? 0 : (z2 - z1) / dx;
+	    float z_step = dx == 0 ? 0 : (z2 - z1) / dx;
 
 	    float u_step = dx == 0 ? 0 : (u2 - u1) / dx;
 	    float v_step = dx == 0 ? 0 : (v2 - v1) / dx;
@@ -898,7 +1125,6 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 
 		if (x1 < width && x1 >= 0.f && z1 > 0.f) {
 		    size_t index = x1 + y1 * width;
-		    assert(index < width * height && index < z_buffer.size());
 		    if (z1 < z_buffer[index]) {
 			pixels[index] = tex.get_color(u1, v1);
 			z_buffer[index] = z1;
@@ -910,6 +1136,35 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 		v1 += v_step ;
 		z1 += z_step;
 
+	    }
+	}
+
+	void draw_line_hor_col_z(int x1, int y1, int x2, float z1, float z2, Color col) {
+	    draw_line_hor_col_z(tex.pixels, tex.width, tex.height, x1, y1, x2, z1, z2, col.to_int());
+	}
+
+	void draw_line_hor_col_z(uint32_t* pixels, int width, int height, int x1, int y1, int x2, float z1 = 0, float z2 = 0, uint32_t col = PURPLE.to_int()) {
+
+	    if (y1 >= height || y1 < 0.f) return;
+	    assert(pixels);
+
+	    int dx = std::abs(x2 - x1);
+	    int sx = (x1 < x2) ? 1 : -1;
+
+	    float z_step = dx == 0 ? 0 : (z2 - z1) / dx;
+
+	    for (int i = 0; i < dx; ++i) {
+
+		if (x1 < width && x1 >= 0.f) {
+		    size_t index = x1 + y1 * width;
+		    if (z1 < z_buffer[index]) {
+			pixels[index] = col;
+			z_buffer[index] = z1;
+		    }
+		}
+
+		x1 += sx;
+		z1 += z_step;
 	    }
 	}
 
@@ -925,10 +1180,13 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    int dx = std::abs(x2 - x1);
 	    int sx = (x1 < x2) ? 1 : -1;
 
+
 	    for (int i = 0; i < dx; ++i) {
 
-		if (x1 < width && x1 >= 0.f)
-		    pixels[x1 + y1 * width] = col;
+		if (x1 < width && x1 >= 0.f) {
+		    size_t index = x1 + y1 * width;
+		    pixels[index] = col;
+		}
 
 		x1 += sx;
 	    }
@@ -990,25 +1248,6 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	     Vertex3UV& a = tri.a;
 	     Vertex3UV& b = tri.b;
 	     Vertex3UV& c = tri.c;
-
-		//std::println("after projection:\na = {}", a.to_str());
-		//std::println("b = {}", b.to_str());
-		//std::println("c = {}", c.to_str());
-	//void fill_triangle_tex(Vertex3& a, Vertex3& b, Vertex3& c) {
-
-	    gmath::Vec3 ab = b.pos - a.pos;
-	    gmath::Vec3 ac = c.pos - a.pos;
-	    gmath::Vec3 normal = gmath::normalize(gmath::cross(ab, ac));
-	    gmath::Vec3 camera_dir = {0.f, 0.f, 1.f};
-	    
-
-	    //std::println("normal = {}", normal.to_str());
-
-	    //std::println("dot(camera, normal) = {}", gmath::dot(camera_dir, normal));
-
-	    // backface culling
-	    if (gmath::dot(camera_dir, normal) >= 0.f) return;
-
 
 	    Line_Data line1;
 	    Line_Data line2;
@@ -1113,12 +1352,16 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 	    line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
 	    line2.set_initial(p2.pos.x, p2.pos.y, target2.pos.x, target2.pos.y);
 
+	    float dist1 = line1.length();
+	    float dist2 = line2.length();
+
 	    // horizontal line from p1 - target1, draw and skip
 	    if (line1.dy == 0) {
-		draw_line_hor_col(p1.pos.x, p1.pos.y, target1.pos.x, col);
+		draw_line_hor_col_z(p1.pos.x, p1.pos.y, target1.pos.x, p1.pos.z, target1.pos.z, col);
 		p1 = target1;
 		target1 = *vs[2];
 		line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
+		dist1 = line1.length();
 	    }
 
 	    while (!line2.done) {
@@ -1130,7 +1373,7 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 			p1 = target1;
 			target1 = *vs[2];
 			line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
-			line1.done = false;
+			dist1 = line1.length();
 		    }
 		}
 
@@ -1142,143 +1385,13 @@ constexpr d3::Color WHITE = {255, 255, 255, 255};
 		    line1.went_down = false;
 		    line2.went_down = false;
 
-		    draw_line_hor_col(line1.pixel_x, line1.pixel_y, line2.pixel_x, col);
-		}
-	    }
-	}
+		    float t = 1.f - line1.length() / dist1;
+		    float z1 = gmath::lerpf(p1.pos.z, target1.pos.z, t);
 
+		    t = 1.f - line2.length() / dist2;
+		    float z2 = gmath::lerpf(p2.pos.z, target2.pos.z, t);
 
-	void fill_triangle_color(Vertex3C a, Vertex3C b, Vertex3C c) {
-	    fill_triangle_color(tex.pixels, tex.width, tex.height, a, b, c);
-	}
-	void fill_triangle_color(uint32_t* pixels, int width, int height, Vertex3C a, Vertex3C b, Vertex3C c) {
-	    using namespace gmath;
-	    assert(pixels);
-	    int indices_sorted[3] = {0, 1, 2};
-
-	    //sort_y(vs);
-	    sort_y(a, b, c, indices_sorted);
-	    // transform to 2d integer points
-	    Vertex3C* vs[3] = {
-			(indices_sorted[0] == 0 ? &a : (indices_sorted[0] == 1 ? &b : &c)),
-			(indices_sorted[1] == 0 ? &a : (indices_sorted[1] == 1 ? &b : &c)),
-			(indices_sorted[2] == 0 ? &a : (indices_sorted[2] == 1 ? &b : &c)),
-	    };
-	    // set start point lowest vertex (cursed)
-	    Vertex3C l_1 = *vs[0];
-	    Vertex3C l_2 = l_1;
-
-	    // choose target (end points of lines) based on lowest vertex by sorted index
-	    Vertex3C target1 = *vs[1];
-	    Vertex3C target2 = *vs[2];
-
-	    int dx1 = std::abs(vs[1]->x - vs[0]->x);
-	    int sx1 = (vs[0]->x < vs[1]->x) ? 1 : -1;
-
-	    int dy1 = -std::abs(vs[1]->y - vs[0]->y);
-	    int sy1 = (vs[0]->y < vs[1]->y) ? 1 : -1;
-
-	    int err1 = dx1 + dy1;
-	    int e2_1;
-
-	    int dx2 = std::abs(vs[2]->x - vs[0]->x);
-	    int sx2 = (vs[0]->x < vs[2]->x) ? 1 : -1;
-
-	    int dy2 = -std::abs(vs[2]->y - vs[0]->y);
-	    int sy2 = (vs[0]->y < vs[2]->y) ? 1 : -1;
-
-	    int err2 = dx2 + dy2;
-	    int e2_2;
-	    size_t index = 0;
-
-	    bool stop1 = false;
-	    bool stop2 = false;
-
-	    bool end1 = false;
-	    
-	    float t1 = 0.f;
-	    Vec3 v = {target1.x - l_1.x, target1.y - l_1.y, 0};
-	    float l1 = v.length();
-	    v = {target2.x - l_2.x, target2.y - l_2.y, 0};
-	    float l2 = v.length();
-	    float t2 = 0.f;
-	    
-	    Color col1, col2;
-
-	    while (true) {
-		v = {target1.x - l_1.x, target1.y - l_1.y, 0};
-		t1 = (l1 - v.length()) / l1;
-		col1 = lerp(l_1.col, target1.col, t1);
-		v = {target2.x - l_2.x, target2.y - l_2.y, 0};
-		t2 = (l2 - v.length()) / l2;
-		col2 = lerp(l_2.col, target2.col, t2);
-
-		index = l_1.y * width  + l_1.x;
-		assert(index < width * height && "fill triag line 1");
-		pixels[index] = col1.to_int();
-		index = l_2.y * width  + l_2.x;
-		assert(index < width * height && "fill triag line 2");
-		pixels[index] = col2.to_int();
-
-		if (l_1.x == target1.x && l_1.y == target1.y) {
-		    end1 = true;
-		}
-
-		if (l_2.x == target2.x && l_2.y == target2.y) {
-		    break;
-		}
-
-		if (end1) {
-			
-		    dx1 = std::abs(vs[2]->x - vs[1]->x);
-		    sx1 = (vs[1]->x < vs[2]->x) ? 1 : -1;
-
-		    dy1 = -std::abs(vs[2]->y - vs[1]->y);
-		    sy1 = (vs[1]->y < vs[2]->y) ? 1 : -1;
-
-		    err1 = dx1 + dy1;
-		    end1 = false;
-		    l_1.col = target1.col;
-		    target1 = *vs[2];
-		    t1 = 0.f;
-		    v = {target1.x - l_1.x, target1.y - l_1.y, 0};
-		    l1 = v.length();
-		}
-
-		if (!stop1) {
-		    e2_1 = err1 << 1;
-
-		    if (e2_1 > dy1) {
-			err1 += dy1;
-			l_1.x += sx1;
-		    }
-
-		    if (e2_1 < dx1) {
-			err1 += dx1;
-			l_1.y += sy1;
-			stop1 = true;
-		    }
-		}
-		if (!stop2) {
-		    e2_2 = err2 << 1;
-
-		    if (e2_2 > dy2) {
-			err2 += dy2;
-			l_2.x += sx2;
-		    }
-
-		    if (e2_2 < dx2) {
-			err2 += dx2;
-			l_2.y += sy2;
-			stop2 = true;
-		    }
-		}
-		
-		if (stop1 && stop2) {
-		    Renderer::draw_line_blend(pixels, width, height, 
-			    l_1.x, l_1.y, l_2.x, l_2.y, col1, col2);
-		    stop1 = false;
-		    stop2 = false;
+		    draw_line_hor_col_z(line1.pixel_x, line1.pixel_y, line2.pixel_x, z1, z2, col);
 		}
 	    }
 	}
