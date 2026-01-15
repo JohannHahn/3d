@@ -166,8 +166,8 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
     static constexpr size_t cube_uvs_size = 4;
     constexpr UV cube_uvs[cube_uvs_size] = {
 	{0.f, 0.f},
-	{0.f, 1.f}, 
 	{1.f, 0.f},  
+	{0.f, 1.f}, 
 	{1.f, 1.f}
     };
 
@@ -213,7 +213,7 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 
     struct Face {
 	IndexRecord vs[3];
-	size_t tex_index;
+	int tex_index;
 	std::string to_str() const {
 	    return "Face indeces:\n" + vs[0].to_str() + "\n" + vs[1].to_str() + "\n" + vs[2].to_str();
 	}
@@ -227,15 +227,10 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	    using namespace gmath;
 	    if (speed == 0.f || dir.length() == 0.f) return;
 
-	    Vec3 x_d = {dir.x, 0, 0};
-	    Vec3 z_d = {0, 0, dir.z};
-	    //x_d.multiply(gmath::Mat4::rotation(angles.x, angles.y, angles.z));
-	    //z_d.multiply(gmath::Mat4::rotation(angles.x, angles.y, angles.z));
-
-	    //dir = x_d + z_d;	    
 	    dir.multiply(gmath::Mat4::rotation(angles.x, angles.y, angles.z));
-	    //dir.multiply(speed);
-	    position.add(normalize(dir) * speed);
+	    dir.normalize();
+	    dir.multiply(speed);
+	    position.add(dir);
 	}
     };
 
@@ -453,14 +448,6 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	std::vector<Object> objects;
 	std::vector<IndexRange> ranges;
 	std::vector<Face> faces;
-	std::vector<float> speeds;
-	std::vector<gmath::Vec3> directions;
-
-	//std::vector<size_t> vert_indeces;
-
-	//std::vector<size_t> uv_indeces;
-
-	//std::vector<int> tex_ids;
 
 
 
@@ -469,6 +456,7 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	std::vector<float> z_buffer;
 
 	float far_clip = 100.f;
+	float near_clip = .1f;
 
 	Object camera = {0};
 
@@ -523,6 +511,7 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 		    uvs.emplace_back(UV{u,v}); 
 		}
 		else if (start.starts_with("vn")) {
+		    std::println("parsing face: {}", line);
 		    if (!(iss >> normal.x) ||
 			!(iss >> normal.y) ||
 			!(iss >> normal.z)) {
@@ -532,6 +521,10 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 			continue;
 
 		    }
+		    //normal.multiply(-1.f);
+		    //normal.z *= -1.f;
+		    //normal.y *= -1.f;
+		    std::println("parsed normal = {}", normal.to_str());
 		    normals.emplace_back(normal);
 
 		}
@@ -595,29 +588,30 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	    transforms[camera.id] = t; 
 	}
 
-	size_t push_cube(float side = 1.f, Transform t = {0}, size_t tex_id = 0) {
+
+	size_t push_cube(float side = 1.f, Transform t = {0}, int tex_id = -1) {
 
 	    size_t v_start = vertices.size();
 	    size_t uv_start = uvs.size();
 	    size_t n_start = normals.size();
 
-	    static constexpr size_t v_size = 8;
+	    constexpr size_t v_size = 8;
 	    Vertex3 vertices[v_size] = {0}; 
 	    vertices[0] = {.pos = {-side / 2.f,  side / 2.f, -side / 2.f}};//, .u = 0.f, .v = 0.f, .tex_id = 0};
-	    vertices[1] = {.pos = {-side / 2.f, -side / 2.f, -side / 2.f}};//, .u = 0.f, .v = 1.f, .tex_id = 0};
-	    vertices[2] = {.pos = { side / 2.f,  side / 2.f, -side / 2.f}};//, .u = 1.f, .v = 0.f, .tex_id = 0};
+	    vertices[1] = {.pos = { side / 2.f,  side / 2.f, -side / 2.f}};//, .u = 1.f, .v = 0.f, .tex_id = 0};
+	    vertices[2] = {.pos = {-side / 2.f, -side / 2.f, -side / 2.f}};//, .u = 0.f, .v = 1.f, .tex_id = 0};
 	    vertices[3] = {.pos = { side / 2.f, -side / 2.f, -side / 2.f}};//, .u = 1.f, .v = 1.f, .tex_id = 0};
 									   //
 	    vertices[4] = {.pos = {-side / 2.f,  side / 2.f,  side / 2.f}};//, .u = 0.f, .v = 0.f, .tex_id = 0};
-	    vertices[5] = {.pos = {-side / 2.f, -side / 2.f,  side / 2.f}};//, .u = 0.f, .v = 1.f, .tex_id = 0};
-	    vertices[6] = {.pos = { side / 2.f,  side / 2.f,  side / 2.f}};//, .u = 1.f, .v = 0.f, .tex_id = 0};
+	    vertices[5] = {.pos = { side / 2.f,  side / 2.f,  side / 2.f}};//, .u = 1.f, .v = 0.f, .tex_id = 0};
+	    vertices[6] = {.pos = {-side / 2.f, -side / 2.f,  side / 2.f}};//, .u = 0.f, .v = 1.f, .tex_id = 0};
 	    vertices[7] = {.pos = { side / 2.f, -side / 2.f,  side / 2.f}};//, .u = 1.f, .v = 1.f, .tex_id = 0};
 
 	    push_vertices(vertices, v_size);
 	    push_uvs(cube_uvs, cube_uvs_size);
 
-	    static constexpr size_t n_count = 6;
-	    static constexpr gmath::Vec3 normals[n_count] = {
+	    constexpr size_t n_count = 6;
+	    constexpr gmath::Vec3 normals[n_count] = {
 		{0, 0, -1}, {0, 0, 1},
 		{1, 0, 0}, {-1, 0, 0},
 		{0, 1, 0}, {0, -1, 0}
@@ -642,26 +636,27 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 
     //uvs:
     //0.f, 0.f,
-    //0.f, 1.f, 
     //1.f, 0.f,  
+    //0.f, 1.f, 
     //1.f, 1.f
-	    static constexpr size_t face_count = 6 * 2;
+	    constexpr size_t face_count = 6 * 2;
 	    Face faces[face_count] = {
+		// front
 		{{{0 + v_start, 0 + uv_start, 0 + n_start}, {1 + v_start, 1 + uv_start, 0 + n_start}, {2 + v_start, 2 + uv_start, 0 + n_start}}, tex_id},
 		{{{2 + v_start, 2 + uv_start, 0 + n_start}, {1 + v_start, 1 + uv_start, 0 + n_start}, {3 + v_start, 3 + uv_start, 0 + n_start}}, tex_id},
-
+		// back
 		{{{6 + v_start, 0 + uv_start, 1 + n_start}, {7 + v_start, 1 + uv_start, 1 + n_start}, {4 + v_start, 2 + uv_start, 1 + n_start}}, tex_id},
 		{{{4 + v_start, 2 + uv_start, 1 + n_start}, {7 + v_start, 1 + uv_start, 1 + n_start}, {5 + v_start, 3 + uv_start, 1 + n_start}}, tex_id},
-
+		// left
 		{{{4 + v_start, 0 + uv_start, 4 + n_start}, {0 + v_start, 1 + uv_start, 4 + n_start}, {6 + v_start, 2 + uv_start, 4 + n_start}}, tex_id},
 		{{{6 + v_start, 2 + uv_start, 4 + n_start}, {0 + v_start, 1 + uv_start, 4 + n_start}, {2 + v_start, 3 + uv_start, 4 + n_start}}, tex_id},
-
+		// right
 		{{{1 + v_start, 0 + uv_start, 5 + n_start}, {5 + v_start, 1 + uv_start, 5 + n_start}, {3 + v_start, 2 + uv_start, 5 + n_start}}, tex_id},
 		{{{3 + v_start, 2 + uv_start, 5 + n_start}, {5 + v_start, 1 + uv_start, 5 + n_start}, {7 + v_start, 3 + uv_start, 5 + n_start}}, tex_id},
-
+		// top
 		{{{4 + v_start, 0 + uv_start, 3 + n_start}, {5 + v_start, 1 + uv_start, 3 + n_start}, {0 + v_start, 2 + uv_start, 3 + n_start}}, tex_id},
 		{{{0 + v_start, 2 + uv_start, 3 + n_start}, {5 + v_start, 1 + uv_start, 3 + n_start}, {1 + v_start, 3 + uv_start, 3 + n_start}}, tex_id},
-
+		// bot
 		{{{2 + v_start, 0 + uv_start, 2 + n_start}, {3 + v_start, 1 + uv_start, 2 + n_start}, {6 + v_start, 2 + uv_start, 2 + n_start}}, tex_id},
 		{{{6 + v_start, 2 + uv_start, 2 + n_start}, {3 + v_start, 1 + uv_start, 2 + n_start}, {7 + v_start, 3 + uv_start, 2 + n_start}}, tex_id},
 	    };
@@ -720,35 +715,6 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	    }
 	}
 
-	//void obj_push_verts(size_t id, const Vertex3* verts, size_t v_count, const size_t* indeces, size_t i_count) {
-	//    assert(id < objects.size());
-	//    assert(verts);
-	//    assert(indeces);
-
-	//    size_t i_start = vertices.size();
-	//    for (int i = 0; i < v_count; ++i) {
-	//	vertices.push_back(verts[i]);
-	//    }
-
-	//    IndexRange& range = ranges[id];
-	//    range.start = vert_indeces.size();
-	//    range.count = i_count;
-
-	//    for (int i = 0; i < i_count; ++i) {
-	//	vert_indeces.push_back(i_start + indeces[i]);
-	//    }
-
-	//    
-	//}
-	//
-	//void obj_push_tex_id(size_t obj_id, size_t tex_id) {
-	//    assert(obj_id < objects.size());
-	//    //assert(tex_id < textures.size());
-	//    assert(tex_ids.size() == objects.size());
-
-	//    tex_ids[obj_id] = tex_id;
-	//}
-	
 	void obj_set_transform(size_t obj_id, const Transform& t) {
 	    assert(obj_id < objects.size());
 	    assert(obj_id < transforms.size());
@@ -757,29 +723,6 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	    transforms[obj_id] = t; 
 
 	}
-
-	//void obj_push_uvs(size_t id, const float* uvs, size_t uvs_count, const size_t* uvs_indeces) {
-	//    assert(id < objects.size());
-	//    assert(uvs);
-	//    assert(uvs_indeces);
-
-	//    IndexRange& range = ranges[id];
-
-	//    // can only push uvs if vertices + indeces already pushed
-	//    assert(vert_indeces.size() == uv_indeces.size() + range.count);
-
-	//    // 2 floats per index
-	//    size_t i_start = this->uvs.size() / 2;
-	//    
-	//    for (int i = 0; i < uvs_count; ++i) {
-	//	this->uvs.push_back(uvs[i]);
-	//    }
-	//    for (int i = 0; i < range.count; ++i) {
-	//	uv_indeces.push_back(i_start + uvs_indeces[i]);
-	//    }
-
-	//    assert(vert_indeces.size() == uv_indeces.size());
-	//}
 
 	void init_texture() {
 	    assert(tex.pixels && tex.width && tex.height);
@@ -874,16 +817,15 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 
 	    const Transform& camera_transform = transforms[camera.id];
 	    Mat4 camera_model = Mat4::get_model(camera_transform.position, camera_transform.angles);
+	    constexpr Vec3 camera_dir = {0, 0, 1};
 	    Mat4 view = Mat4::get_model(camera_transform.position * -1, camera_transform.angles * -1);
-	    Vec3 camera_dir = {0, 0, 1};
 
-	    // camera always at id = 0
+	    // camera always at id = 0, so other objects start at 1
 	    size_t obj_id = 1;
-	    //std::println("camera model : \n{}", camera_model.to_str());
-	    //std::println("view : \n{}", view.to_str());
 
 	    for (int i = 0; i < faces.size(); i++) {
-	    //for (int i = 2; i < vert_indeces.size(); i += 3) {
+		Color debug_col = PURPLE;
+
 		if (i >= (ranges[obj_id].start + ranges[obj_id].count) ) {
 		    obj_id++;
 		}
@@ -902,28 +844,53 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 
 		int tex_id = face.tex_index;
 
-		//std::println("face: {}", face.to_str());
-		//std::println("vertices size = {}", vertices.size());
+		Vertex3 a = vertices[face.vs[0].v_index];
+		Vertex3 b = vertices[face.vs[1].v_index];
+		Vertex3 c = vertices[face.vs[2].v_index];
+		a.pos.multiply(mv);
+		b.pos.multiply(mv);
+		c.pos.multiply(mv);
+
+
+		a.pos = a.pos.project(tex.width, tex.height);
+		b.pos = b.pos.project(tex.width, tex.height);
+		c.pos = c.pos.project(tex.width, tex.height);
+
+		// backface culling    
+		Vec3 ab = b.pos - a.pos;
+		Vec3 ac = c.pos - a.pos;
+		Vec3 normal = gmath::cross(ab, ac);
+		normal.normalize();
+
+		//Vec3 normal2 = normals[face.vs[0].n_index];
+		//Mat4 n_m = camera_model * Mat4::rotation(obj_transform.angles);
+		//normal2.multiply(Mat4::rotation(camera_transform.angles));
+		////normal2.project(tex.width, tex.height);
+		//normal2.normalize();
+
+		//std::println("normal1 = {}", normal.to_str());
+		//std::println("normal2 = {}", normal2.to_str());
+
+		float cam_dot = gmath::dot(camera_dir, normal);
+		//std::println("cam_dot = {}", cam_dot);
+
+		if (cam_dot <= 0.f) {
+		    continue;
+		    tex_id = -1;
+		    debug_col = RED;
+		}
+
+		// near clip
+		if (a.pos.z <= near_clip || b.pos.z <= near_clip || c.pos.z <= near_clip) {
+		    continue;
+		}
+		// far clip
+		if (a.pos.z >= far_clip || b.pos.z >= far_clip || c.pos.z >= far_clip) {
+		    continue;
+		}
+		
 		if (tex_id < 0) {
-
-		    Vertex3 a = vertices[face.vs[0].v_index];
-		    Vertex3 b = vertices[face.vs[1].v_index];
-		    Vertex3 c = vertices[face.vs[2].v_index];
-		    a.pos.multiply(mv);
-		    b.pos.multiply(mv);
-		    c.pos.multiply(mv);
-
-		    a.pos = a.pos.project(tex.width, tex.height);
-		    b.pos = b.pos.project(tex.width, tex.height);
-		    c.pos = c.pos.project(tex.width, tex.height);
-		    // backface culling    
-		    gmath::Vec3 ab = b.pos - a.pos;
-		    gmath::Vec3 ac = c.pos - a.pos;
-		    gmath::Vec3 normal = gmath::normalize(gmath::cross(ab, ac));
-		    if (gmath::dot(camera_dir, normal) >= 0.f) continue;
-
-		    fill_triangle_color(a, b, c, PURPLE);
-
+		    fill_triangle_color(a, b, c, debug_col);
 		} 
 		else {
 
@@ -932,24 +899,11 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 					 face.vs[2].uv_index};
 		    TriangleUV tri = {
 
-			.a = { .pos = vertices[face.vs[0].v_index].pos, .u = uvs[face.vs[0].uv_index].u, .v = uvs[face.vs[0].uv_index].v},
-			.b = { .pos = vertices[face.vs[1].v_index].pos, .u = uvs[face.vs[1].uv_index].u, .v = uvs[face.vs[1].uv_index].v},
-			.c = { .pos = vertices[face.vs[2].v_index].pos, .u = uvs[face.vs[2].uv_index].u, .v = uvs[face.vs[2].uv_index].v},
+			.a = { .pos = a.pos, .u = uvs[face.vs[0].uv_index].u, .v = uvs[face.vs[0].uv_index].v},
+			.b = { .pos = b.pos, .u = uvs[face.vs[1].uv_index].u, .v = uvs[face.vs[1].uv_index].v},
+			.c = { .pos = c.pos, .u = uvs[face.vs[2].uv_index].u, .v = uvs[face.vs[2].uv_index].v},
 			.tex_id = (size_t)tex_id
 		    };
-
-		    tri.a.pos.multiply(mv);
-		    tri.b.pos.multiply(mv);
-		    tri.c.pos.multiply(mv);
-
-		    tri.a.pos = tri.a.pos.project(tex.width, tex.height);
-		    tri.b.pos = tri.b.pos.project(tex.width, tex.height);
-		    tri.c.pos = tri.c.pos.project(tex.width, tex.height);
-		    // backface culling    
-		    gmath::Vec3 ab = tri.b.pos - tri.a.pos;
-		    gmath::Vec3 ac = tri.c.pos - tri.a.pos;
-		    gmath::Vec3 normal = gmath::normalize(gmath::cross(ab, ac));
-		    if (gmath::dot(camera_dir, normal) >= 0.f) continue;
 
 		    fill_triangle_tex(tri);
 		}
