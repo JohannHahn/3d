@@ -7,6 +7,7 @@
 
 
 const char* window_title = "3D";
+POINT mouse_prev = {0, 0};
 
 //constexpr float aspect_ratio = 16.f / 9.f;
 constexpr uint64_t window_width = 900;
@@ -17,8 +18,8 @@ d3::Transform cube_transform = {{0, 0, 2}, {0}};
 d3::Transform camera_transform = {{0, 0, -20}, {0}};
 d3::Transform surf_transform = {{0, 0, 0}, {0}};
 
-gmath::Vec3 camera_dir = {0, 0, 0};
 float camera_speed = 0.1f;
+gmath::Vec3 camera_dir = {0, 0, 0};
 
 d3::RectangleI rec = {window_width - 200, 150, 10, 10};
 
@@ -57,12 +58,40 @@ bool index_test(float u, float v, int width, int height) {
     return succ;
 }
 
-POINT mouse_prev = {0, 0};
+void reduce_angles(gmath::Vec3& angles) {
+    float pi2 = gmath::PI * 2.f;
+	if (angles.x >= pi2) {
+	    angles.x -= pi2;
+	}
+	if (angles.y >= pi2) {
+	    angles.y -= pi2;
+	}
+	if (angles.z >= pi2) {
+	    angles.z -= pi2;
+	}
+	if (angles.x <= pi2) {
+	    angles.x += pi2;
+	}
+	if (angles.y <= pi2) {
+	    angles.y += pi2;
+	}
+	if (angles.z <= pi2) {
+	    angles.z += pi2;
+	}
+    
+}
+
+void reduce_angles_all() {
+    reduce_angles(surf_transform.angles);    
+    reduce_angles(camera_transform.angles);    
+    reduce_angles(cube_transform.angles);    
+}
+
 void controls(d3::Window& window) {
 
 	float step = 0.05f;
-
 	camera_dir = {0, 0, 0};
+
 
 	if (GetAsyncKeyState(VK_LEFT) & 0x8000) {
 	    cube_transform.position.x -= step;
@@ -76,9 +105,11 @@ void controls(d3::Window& window) {
 	if (GetAsyncKeyState(VK_UP) & 0x8000) {
 	    //camera_transform.position.y += step;
 	    //camera_dir.y = 
+	    surf_transform.angles.x += step;
 	}
 	if (GetAsyncKeyState(VK_DOWN) & 0x8000) {
 	    //camera_transform.position.y -= step;
+	    surf_transform.angles.x -= step;
 	}
 
 	if (GetAsyncKeyState('W') & 0x8000) {
@@ -124,12 +155,14 @@ void controls(d3::Window& window) {
 	    camera_transform.angles.x -= dif_y * step / 4.f;
 	}
 	mouse_prev = mouse;
+
+	//reduce_angles_all();
 }
 
 size_t load_teapot(d3::Renderer& renderer, const d3::Transform& t = {0}, size_t tex_id = -1) {
 
     size_t teapot_id;
-    if (!renderer.loadOBJ("res/utah_teapot_16.obj", teapot_id, t, tex_id)) {
+    if (!renderer.loadOBJ("res/utah_teapot_3.obj", teapot_id, t, tex_id)) {
         std::println("ERROR: could not load utah teapot obj");
         exit(0);
     }
@@ -150,7 +183,6 @@ size_t push_surface(d3::Renderer& renderer, const d3::Vertex3* verts, gmath::Vec
     d3::IndexRange range;
     range.start = renderer.faces.size();
     range.count = 2;
-
 
     renderer.push_uvs(d3::cube_uvs, d3::cube_uvs_size);
     renderer.push_normals(&normal, 1);
@@ -192,18 +224,9 @@ size_t push_pyramid(d3::Renderer& renderer, gmath::Vec3 origin, gmath::Vec3 dir,
 
 int main() {
 
-    float angle = 1.f;
-    gmath::Mat4 rotation_old = gmath::Mat4::rotation_x(1.f);
-    gmath::Mat4 rotation_quat = gmath::Mat4::rotation({gmath::Vec4::euler_to_quat({angle, 0.f, 0.f})});
-
-    std::println("old matrix = {}", rotation_old.to_str());
-    std::println("quat matrix = {}", rotation_quat.to_str());
-
-    //return 0;
-
     d3::Window window(window_width, window_height, window_title);
     d3::Renderer& renderer = window.renderer;
-    renderer.far_clip = 500.f;
+    renderer.far_clip = 100.f;
     d3::Timer timer;
     window.set_target_fps(60);
 
@@ -223,16 +246,16 @@ int main() {
     }
 
     size_t teapot_id = load_teapot(renderer, {0, 5, 0}, 1);
-    renderer.push_cube(.5f, {{0, 0, cube_transform.position.z + 1}}, 0);
+    renderer.push_cube(.5f, {{0, 0, -2}}, 0);
     size_t cube_id = renderer.push_cube(3, cube_transform, 1);
 
 
     float surf_size = 10.f;
     d3::Vertex3 surf_verts[4] = {
-	{{-surf_size / 2.f,  surf_size / 2.f, -1.f }},
-	{{ surf_size / 2.f,  surf_size / 2.f, -1.f }},
-	{{-surf_size / 2.f, -surf_size / 2.f, -1.f }},
-	{{ surf_size / 2.f, -surf_size / 2.f, -1.f }}
+        {{-surf_size / 2.f,  surf_size / 2.f, -1.f }},
+        {{ surf_size / 2.f,  surf_size / 2.f, -1.f }},
+        {{-surf_size / 2.f, -surf_size / 2.f, -1.f }},
+        {{ surf_size / 2.f, -surf_size / 2.f, -1.f }}
     };
     size_t surf_id = push_surface(renderer, surf_verts, {0, 0, -1});
 
@@ -243,9 +266,10 @@ int main() {
 	//timer.start();
 	controls(window);
 
+
 	window.begin_frame();
 
-	renderer.clear_pixels(d3::BLACK);
+	renderer.clear_pixels(d3::GRAY);
 
 	renderer.draw_rec(rec, {0xFF, 0x00, 0x22, 0xFF} );
 
@@ -254,6 +278,7 @@ int main() {
 	camera_transform.move_dir(camera_dir, camera_speed);
 	renderer.set_cam_transform(camera_transform);
 	renderer.draw_triangles();
+	renderer.draw_triangles_wireframe(d3::WHITE);
 
 	window.end_frame();
 

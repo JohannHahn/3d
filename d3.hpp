@@ -156,7 +156,8 @@ constexpr d3::Color RED = {255, 0, 0, 255};
 constexpr d3::Color GREEN = {0, 255, 0, 255};
 constexpr d3::Color BLUE = {0, 0, 255, 255};
 constexpr d3::Color WHITE = {255, 255, 255, 255};
-constexpr d3::Color PURPLE = {255, 0, 255, 255};
+constexpr d3::Color PURPLE = {128, 0, 128, 255};
+constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 
     struct UV {
 	float u;
@@ -227,7 +228,7 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	    using namespace gmath;
 	    if (speed == 0.f || dir.length() == 0.f) return;
 
-	    dir.multiply(gmath::Mat4::rotation(angles.x, angles.y, angles.z));
+	    dir.multiply(gmath::Mat4::rotation_from_angles(angles));
 	    dir.normalize();
 	    dir.multiply(speed);
 	    position.add(dir);
@@ -286,7 +287,7 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	    int x = std::round(u * (width  - 1 + 0.09f));
 	    int y = std::round(v * (height - 1 + 0.09f));
 	    size_t index = x + y * width;
-	    if (index >= width * height) {
+	    if (x < 0.f || x >= width || y < 0.f || y >= height) {
 		std::println("ERROR: index  = {} is wrong, u = {}, v = {}, x = {}, y = {}, width = {}, height = {}, width * height = {}", index, u, v, x, y, width, height, width * height);
 		//assert(0 && "wrong index get color");
 		return 0;
@@ -296,8 +297,8 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
     };
 
     struct Line_Data {
-	int x1, y1, x2, y2, dx, sx, dy, sy, err, err2, pixel_x, pixel_y; 
-	float xf, yf;
+	int x1, y1, x2, y2, dx, sx, dy, sy, err, err2;//, pixel_x, pixel_y; 
+	//float xf, yf;
 
 	bool done = false;
 	bool went_down = false;
@@ -321,16 +322,20 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 		done = true;
 	    }
 
-	    pixel_x = x1;
-	    pixel_y = y1;
-	    xf = x1;
-	    yf = y1;
+	    //pixel_x = x1;
+	    //pixel_y = y1;
+	    //xf = x1;
+	    //yf = y1;
 	}
 
 	float length() {
-	    float x = (float)x2 - xf;
-	    float y = (float)y2 - yf;
+	    float x = (float)x2 - x1;
+	    float y = (float)y2 - y1;
 	    return sqrtf(x * x + y * y);
+	}
+
+	bool fully_on_screen(int width, int height) {
+	    return x1 >= 0 && x1 < width && y1 >= 0 && y1 < height && x2 >= 0 && x2 < width && y2 >= 0 && y2 < height;
 	}
     };
 
@@ -385,7 +390,7 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	    }
 	}
     }
-    Color lerp(Color start, Color end, float t) {
+    Color lerp_color(Color start, Color end, float t) {
 	if (t < 0.f) t = 0.f;
 	else if (t > 1.f) t = 1.f;
 
@@ -448,8 +453,6 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	std::vector<Object> objects;
 	std::vector<IndexRange> ranges;
 	std::vector<Face> faces;
-
-
 
 	Texture tex;
 
@@ -645,8 +648,8 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 		{{{0 + v_start, 0 + uv_start, 0 + n_start}, {1 + v_start, 1 + uv_start, 0 + n_start}, {2 + v_start, 2 + uv_start, 0 + n_start}}, tex_id},
 		{{{2 + v_start, 2 + uv_start, 0 + n_start}, {1 + v_start, 1 + uv_start, 0 + n_start}, {3 + v_start, 3 + uv_start, 0 + n_start}}, tex_id},
 		// back
-		{{{6 + v_start, 0 + uv_start, 1 + n_start}, {7 + v_start, 1 + uv_start, 1 + n_start}, {4 + v_start, 2 + uv_start, 1 + n_start}}, tex_id},
-		{{{4 + v_start, 2 + uv_start, 1 + n_start}, {7 + v_start, 1 + uv_start, 1 + n_start}, {5 + v_start, 3 + uv_start, 1 + n_start}}, tex_id},
+		{{{6 + v_start, 3 + uv_start, 1 + n_start}, {7 + v_start, 2 + uv_start, 1 + n_start}, {4 + v_start, 1 + uv_start, 1 + n_start}}, tex_id},
+		{{{4 + v_start, 1 + uv_start, 1 + n_start}, {7 + v_start, 2 + uv_start, 1 + n_start}, {5 + v_start, 0 + uv_start, 1 + n_start}}, tex_id},
 		// left
 		{{{4 + v_start, 0 + uv_start, 4 + n_start}, {0 + v_start, 1 + uv_start, 4 + n_start}, {6 + v_start, 2 + uv_start, 4 + n_start}}, tex_id},
 		{{{6 + v_start, 2 + uv_start, 4 + n_start}, {0 + v_start, 1 + uv_start, 4 + n_start}, {2 + v_start, 3 + uv_start, 4 + n_start}}, tex_id},
@@ -810,6 +813,58 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 
 
 
+	void draw_triangles_wireframe(Color wire_col) {
+	    using namespace gmath;
+
+	    const Transform& camera_transform = transforms[camera.id];
+	    Mat4 camera_model = Mat4::get_model(camera_transform.position, camera_transform.angles);
+	    Mat4 view = Mat4::get_model(camera_transform.position * -1, camera_transform.angles * -1);
+
+	    // camera always at id = 0, so other objects start at 1
+	    size_t obj_id = 1;
+
+	    for (int i = 0; i < faces.size(); i++) {
+
+		if (i >= (ranges[obj_id].start + ranges[obj_id].count) ) {
+		    obj_id++;
+		}
+
+		assert(obj_id < objects.size());
+		assert(obj_id < transforms.size());
+		    
+		const Object& obj = objects[obj_id];
+		const Transform& obj_transform = transforms[obj_id];	
+		Mat4 model = Mat4::get_model(obj_transform.position, obj_transform.angles);
+		Mat4 mv = view * model;
+
+		const Face& face = faces[i];
+
+		Vertex3 a = vertices[face.vs[0].v_index];
+		Vertex3 b = vertices[face.vs[1].v_index];
+		Vertex3 c = vertices[face.vs[2].v_index];
+		a.pos.multiply(mv);
+		b.pos.multiply(mv);
+		c.pos.multiply(mv);
+
+
+		a.pos = a.pos.project(tex.width, tex.height);
+		b.pos = b.pos.project(tex.width, tex.height);
+		c.pos = c.pos.project(tex.width, tex.height);
+
+		// near clip
+		if (a.pos.z <= near_clip || b.pos.z <= near_clip || c.pos.z <= near_clip) {
+		    continue;
+		}
+		// far clip
+		if (a.pos.z >= far_clip || b.pos.z >= far_clip || c.pos.z >= far_clip) {
+		    continue;
+		}
+
+		draw_line_color(a.pos.x, a.pos.y, b.pos.x, b.pos.y, wire_col);
+		draw_line_color(a.pos.x, a.pos.y, c.pos.x, c.pos.y, wire_col);
+		draw_line_color(c.pos.x, c.pos.y, b.pos.x, b.pos.y, wire_col);
+	    }
+	}
 	void draw_triangles() {
 	    using namespace gmath;
 
@@ -856,10 +911,20 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 		b.pos = b.pos.project(tex.width, tex.height);
 		c.pos = c.pos.project(tex.width, tex.height);
 
+		// transfrom to middle of pixel
+		//float p_width = 1.f / tex.width;
+		//float p_height = 1.f / tex.height;
+		//a.pos.x += p_width  / 2.f;
+		//b.pos.x += p_width  / 2.f;
+		//c.pos.x += p_width  / 2.f;
+		//a.pos.y += p_height / 2.f;
+		//b.pos.y += p_height / 2.f;
+		//c.pos.y += p_height / 2.f;
+
 		// backface culling    
 		Vec3 ab = b.pos - a.pos;
 		Vec3 ac = c.pos - a.pos;
-		Vec3 normal = gmath::cross(ab, ac);
+		Vec3 normal = gmath::Vec3::cross(ab, ac);
 		normal.normalize();
 
 		//Vec3 normal2 = normals[face.vs[0].n_index];
@@ -916,7 +981,10 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 
 	void clear_pixels(uint32_t* pixels, int width, int height, Color c) {
 	    assert(pixels && "clear_pixels: pixels = nullptr");
-	    std::memset(pixels, c.to_int(), width * height * sizeof(uint32_t));
+	    int col = c.to_int();
+	    for(int i = 0; i < width * height; ++i) {
+	        pixels[i] = col;
+	    }
 	}
 
 	void draw_rec(RectangleI rec, Color col) {
@@ -967,18 +1035,18 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	    if (line.err2 > line.dy) {
 		line.err += line.dy;
 		line.x1 += line.sx;
-		line.xf += line.sx;
+		//line.xf += line.sx;
 	    }
 
 	    if (line.err2 < line.dx) {
 		line.err += line.dx;
 		line.y1 += line.sy;
-		line.yf += line.sy;
+		//line.yf += line.sy;
 		line.went_down = true;
 	    }
 
-	    line.pixel_x = line.xf;
-	    line.pixel_y = line.yf;
+	    //line.pixel_x = line.x1;//line.xf;
+	    //line.pixel_y = line.y1;//line.yf;
 	}
 
 	void draw_line_color(Line_Data& line, Color color) {
@@ -1002,18 +1070,14 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	    }
 
 	    if (line.dy == 0) {
-		draw_line_hor_col(line.x1, line.y1, line.y2, color);
+		draw_line_hor_col(line.x1, line.y1, line.x2, color);
 	    }
 
 	    while (!line.done) {
-		size_t index = line.pixel_x + line.pixel_y * width;
-		if (index < width * height) {
+		if (line.x1 >= 0 && line.x1 < width && line.y1 >= 0 && line.y1 < height) {
+		    size_t index = line.x1 + line.y1 * width;
 		    pixels[index] = color.to_int();
 		    //std::println("accepted pixel = {} {}", line.pixel_x, line.pixel_y);
-		}
-		else {
-		    std::println("rejected pixel = {} {}", line.pixel_x, line.pixel_y);
-		    assert(0);
 		}
 
 		line_next_pixel(line, width, height);
@@ -1027,7 +1091,7 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	void draw_line_vert(uint32_t* pixels, int width, int height, 
 		int x1, int y1, int y2, uint32_t col) {
 
-	    if (y1 >= height || y1 < 0.f) return;
+	    if (x1 < 0 || x1 >= width) return;
 	    assert(pixels);
 
 	    int dy = std::abs(y2 - y1);
@@ -1069,41 +1133,52 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	    }
 	}
 
-	void draw_line_hor_tex(int x1, int y1, int x2, float z1, float z2, float u1, float v1, float u2, float v2, int tex_id) {
+	void draw_line_hor_tex(int x1, int y1, int x2, float z1, float z2, float u1, float v1, float u2, float v2, int tex_id, bool second = false) {
 	    assert(tex_id < textures.size());
-	    draw_line_hor_tex(tex.pixels, tex.width, tex.height, x1, y1, x2, z1, z2, u1, v1, u2, v2, textures[tex_id]);
+	    draw_line_hor_tex(tex.pixels, tex.width, tex.height, x1, y1, x2, z1, z2, u1, v1, u2, v2, textures[tex_id], second);
 	}
 
 	// horizontal line
 	//
 	void draw_line_hor_tex(uint32_t* pixels, int width, int height, 
-		int x1, int y1, int x2, float z1, float z2, float u1, float v1, float u2, float v2, const Texture& tex) {
+		int x1, int y1, int x2, float z1, float z2, float u1, float v1, float u2, float v2, const Texture& tex, bool second = false) {
 
 	    assert(pixels);
 	    if (y1 >= height || y1 < 0.f) return;
 
 	    int dx = std::abs(x2 - x1);
 	    int sx = (x1 < x2) ? 1 : -1;
-	    float z_step = dx == 0 ? 0 : (z2 - z1) / dx;
+
+	    float z1_reci = 1.f / z1;
+	    float z2_reci = 1.f / z2;
+	    u1 *= z1_reci;
+	    v1 *= z1_reci;
+	    u2 *= z2_reci;
+	    v2 *= z2_reci;
 
 	    float u_step = dx == 0 ? 0 : (u2 - u1) / dx;
 	    float v_step = dx == 0 ? 0 : (v2 - v1) / dx;
+	    float z_reci_step = dx == 0 ? 0 : (z2_reci - z1_reci) / dx;
+
 
 
 	    for (int i = 0; i < dx; ++i) {
 
-		if (x1 < width && x1 >= 0.f && z1 > 0.f) {
+		float z = 1.f / z1_reci;
+		if (x1 < width && x1 >= 0.f) {
 		    size_t index = x1 + y1 * width;
-		    if (z1 < z_buffer[index]) {
-			pixels[index] = tex.get_color(u1, v1);
-			z_buffer[index] = z1;
+		    if (z < z_buffer[index]) {
+			uint32_t col = (second ? RED.to_int() : tex.get_color(u1 * z, v1 * z));
+			pixels[index] = col;
+			z_buffer[index] = z;
 		    }
 
 		}
 		x1 += sx;
+
 		u1 += u_step;
 		v1 += v_step ;
-		z1 += z_step;
+		z1_reci += z_reci_step;
 
 	    }
 	}
@@ -1119,6 +1194,7 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 
 	    int dx = std::abs(x2 - x1);
 	    int sx = (x1 < x2) ? 1 : -1;
+
 
 	    float z_step = dx == 0 ? 0 : (z2 - z1) / dx;
 
@@ -1185,7 +1261,7 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 
 	    while (true) {
 		if ((uint32_t)(x1 + y1 * width) < width * height) {
-		    int color = lerp(start, end, t).to_int();
+		    int color = lerp_color(start, end, t).to_int();
 		    pixels[x1 + y1 * width] = color;
 		}
 		
@@ -1243,6 +1319,9 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	    float dist1 = line1.length();
 	    float dist2 = line2.length();
 
+	    // toggle to show the second triangle in a different way for debugging
+	    bool second = false;
+
 	    // horizontal line from p1 - target1, draw and skip
 	    if (line1.dy == 0) {
 	        draw_line_hor_tex(p1.pos.x, p1.pos.y, target1.pos.x, p1.pos.z, target1.pos.z, p1.u, p1.v, target1.u, target1.v, tri.tex_id);
@@ -1269,6 +1348,7 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 			//std::println("AFTER:\ndist1 = {}, v.length = {}", dist1, v.length());
 			//std::println("p1: {}, {}", line1.x1, line1.y1);
 			//std::println("target1: {}", target1.to_str());
+			second = false;
 		    }
 		}
 
@@ -1280,18 +1360,29 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 		    line1.went_down = false;
 		    line2.went_down = false;
 
+		    float z1_recip = 1.f / p1.pos.z;
+		    float z2_recip = 1.f / p2.pos.z;
+
+		    float zt1_recip = 1.f / target1.pos.z;
+		    float zt2_recip = 1.f / target2.pos.z;
+
 		    float t = 1.f - line1.length() / dist1;
-		    float u1 = gmath::lerpf(p1.u, target1.u, t);
-		    float v1 = gmath::lerpf(p1.v, target1.v, t);
+		    float u1 = gmath::lerpf(p1.u * z1_recip, target1.u * zt1_recip, t);
+		    float v1 = gmath::lerpf(p1.v * z1_recip, target1.v * zt1_recip, t);
+		    //float u1 = gmath::lerpf(p1.u, target1.u, t);
+		    //float v1 = gmath::lerpf(p1.v, target1.v, t);
 		    float z1 = gmath::lerpf(p1.pos.z, target1.pos.z, t);
 
+		    float zi1 = 1.f / gmath::lerpf(z1_recip, zt1_recip, t);
+
 		    t = 1.f - line2.length() / dist2;
-		    float u2 = gmath::lerpf(p2.u, target2.u, t);
-		    float v2 = gmath::lerpf(p2.v, target2.v, t);
+		    float u2 = gmath::lerpf(p2.u * z2_recip, target2.u * zt2_recip, t);
+		    float v2 = gmath::lerpf(p2.v * z2_recip, target2.v * zt2_recip, t);
 		    float z2 = gmath::lerpf(p2.pos.z, target2.pos.z, t);
 
+		    float zi2 = 1.f / gmath::lerpf(z2_recip, zt2_recip, t);
 
-		    draw_line_hor_tex(line1.pixel_x, line1.pixel_y, line2.pixel_x, z1, z2, u1, v1, u2, v2, tri.tex_id);
+		    draw_line_hor_tex(line1.x1, line1.y1, line2.x1, zi1, zi2, u1 * zi1, v1 * zi1, u2 * zi2, v2 * zi2, tri.tex_id, second);
 		}
 	    }
 	}
@@ -1360,7 +1451,7 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 		    t = 1.f - line2.length() / dist2;
 		    float z2 = gmath::lerpf(p2.pos.z, target2.pos.z, t);
 
-		    draw_line_hor_col_z(line1.pixel_x, line1.pixel_y, line2.pixel_x, z1, z2, col);
+		    draw_line_hor_col_z(line1.x1, line1.y1, line2.x1, z1, z2, col);
 		}
 	    }
 	}
@@ -1463,9 +1554,6 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 	    }
 	}
 
-
-	
-
 	void draw() {
 	    renderer.draw_tex(hdc);
 	}
@@ -1473,10 +1561,6 @@ constexpr d3::Color PURPLE = {255, 0, 255, 255};
 
 	void set_target_fps(int fps) {
 	    frametime = ((uint64_t)(1000.f / fps));
-	}
-
-	bool in_window(PointI p) {
-	    return p.x >= 0 && p.x < width && p.y >= 0 && p.y < height;
 	}
 
     };
