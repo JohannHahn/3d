@@ -172,36 +172,14 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 	{1.f, 1.f}
     };
 
-    struct Vertex3C {
-	float x;
-	float y;
-	float z;
-	Color col;		
-    };
 
-    struct Vertex3 {
-	gmath::Vec3 pos;
-	std::string to_str() {
-	    return std::string("pos: ") + pos.to_str() + std::string(", uv: ");// + std::to_string(u) + ", " + std::to_string(v) + ", tex_id: " + std::to_string(tex_id);
-	}
-    };
+    //struct Vertex3 {
+    //    gmath::Vec3.
+    //    std::string to_str() {
+    //        return std::string(. ") +.to_str() + std::string(", uv: ");// + std::to_string(u) + ", " + std::to_string(v) + ", tex_id: " + std::to_string(tex_id);
+    //    }
+    //};
 
-
-    struct Vertex3UV {
-	gmath::Vec3 pos;
-	float u;
-	float v;
-	std::string to_str() {
-	    return std::string("pos: ") + pos.to_str() + std::string(", uv: ") + std::to_string(u) + ", " + std::to_string(v);
-	}
-    };
-
-    struct TriangleUV {
-	Vertex3UV a;
-	Vertex3UV b;
-	Vertex3UV c;
-	size_t tex_id;
-    };
 
     struct IndexRecord {
 	size_t v_index;
@@ -232,6 +210,7 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 	    dir.normalize();
 	    dir.multiply(speed);
 	    position.add(dir);
+	    position.multiply(gmath::Mat4::translation(dir));
 	}
     };
 
@@ -340,51 +319,26 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
     };
 
 
-    void sort_y(Vertex3C a, Vertex3C b, Vertex3C c, int indeces[3]) {
-        if (b.y < a.y && b.y < c.y) {
-            indeces[0] = 1;
-            indeces[1] = 0;
-            if (a.y > c.y) {
-        	indeces[1] = 2;
-        	indeces[2] = 0;
-            }
-        }
-        else if (c.y < a.y && c.y < b.y) {
-            indeces[0] = 2;
-            indeces[2] = 0;
-            if (b.y > a.y) {
-        	indeces[1] = 0;
-        	indeces[2] = 1;
-            }
-        }
-        else {
-            if (b.y > c.y) {
-        	indeces[1] = 2;
-        	indeces[2] = 1;
-            }
-        }
-    }
     template <typename T>
     void sort_y(T a, T b, T c, int indeces[3]) {
-    //void sort_y(Vertex3 a, Vertex3 b, Vertex3 c, int indeces[3]) {
-	if (b.pos.y < a.pos.y && b.pos.y < c.pos.y) {
+	if (b.y < a.y && b.y < c.y) {
 	    indeces[0] = 1;
 	    indeces[1] = 0;
-	    if (a.pos.y > c.pos.y) {
+	    if (a.y > c.y) {
 		indeces[1] = 2;
 		indeces[2] = 0;
 	    }
 	}
-	else if (c.pos.y < a.pos.y && c.pos.y < b.pos.y) {
+	else if (c.y < a.y && c.y < b.y) {
 	    indeces[0] = 2;
 	    indeces[2] = 0;
-	    if (b.pos.y > a.pos.y) {
+	    if (b.y > a.y) {
 		indeces[1] = 0;
 		indeces[2] = 1;
 	    }
 	}
 	else {
-	    if (b.pos.y > c.pos.y) {
+	    if (b.y > c.y) {
 		indeces[1] = 2;
 		indeces[2] = 1;
 	    }
@@ -445,7 +399,8 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 	GLuint program;
 	HGLRC gl_ctx;
 
-	std::vector<Vertex3> vertices;
+	std::vector<gmath::Vec4> vertices_world;
+	std::vector<gmath::Vec4> vertices_viewport;
 	std::vector<UV> uvs;
 	std::vector<gmath::Vec3> normals;
 	std::vector<Texture> textures;
@@ -458,8 +413,9 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 
 	std::vector<float> z_buffer;
 
-	float far_clip = 100.f;
+	float far_clip = 10.f;
 	float near_clip = .1f;
+	float fov = gmath::PI / 2.f;
 
 	Object camera = {0};
 
@@ -483,7 +439,7 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 	    if (file.bad()) return false;
 
 	    // OBJ indeces start with 1, so subtracting 1 should always fix that
-	    size_t v_index_start = this->vertices.size() - 1;
+	    size_t v_index_start = this->vertices_world.size() - 1;
 	    size_t uv_index_start = this->uvs.size() - 1;
 	    size_t n_index_start = this->normals.size() - 1;
 	    IndexRange range;
@@ -493,13 +449,13 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 
 	    std::string line;
 	    std::string start;
-	    std::vector<Vertex3> verts;
+	    std::vector<gmath::Vec4> verts;
 	    std::vector<Face> faces;
 	    std::vector<UV> uvs;
 	    std::vector<gmath::Vec3> normals;
 
 	    Face face;
-	    Vertex3 vert;
+	    gmath::Vec4 vert;
 	    gmath::Vec3 normal;
 	    float u, v;
 
@@ -532,15 +488,16 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 
 		}
 		else if (start.starts_with("v")) {
-		    if (!(iss >> vert.pos.x) ||
-			!(iss >> vert.pos.y) ||
-			!(iss >> vert.pos.z)) {
+		    if (!(iss >> vert.x) ||
+			!(iss >> vert.y) ||
+			!(iss >> vert.z)) {
 			std::println("error on line: {}", line);
 			std::println("start = {}", start);
 			std::println("vertex = {}", vert.to_str());
 			continue;
 
 		    }
+		    vert.w = 1.f;
 		    verts.emplace_back(vert);
 		}
 		else if (start.starts_with("f")) {
@@ -594,21 +551,21 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 
 	size_t push_cube(float side = 1.f, Transform t = {0}, int tex_id = -1) {
 
-	    size_t v_start = vertices.size();
+	    size_t v_start = vertices_world.size();
 	    size_t uv_start = uvs.size();
 	    size_t n_start = normals.size();
 
 	    constexpr size_t v_size = 8;
-	    Vertex3 vertices[v_size] = {0}; 
-	    vertices[0] = {.pos = {-side / 2.f,  side / 2.f, -side / 2.f}};//, .u = 0.f, .v = 0.f, .tex_id = 0};
-	    vertices[1] = {.pos = { side / 2.f,  side / 2.f, -side / 2.f}};//, .u = 1.f, .v = 0.f, .tex_id = 0};
-	    vertices[2] = {.pos = {-side / 2.f, -side / 2.f, -side / 2.f}};//, .u = 0.f, .v = 1.f, .tex_id = 0};
-	    vertices[3] = {.pos = { side / 2.f, -side / 2.f, -side / 2.f}};//, .u = 1.f, .v = 1.f, .tex_id = 0};
-									   //
-	    vertices[4] = {.pos = {-side / 2.f,  side / 2.f,  side / 2.f}};//, .u = 0.f, .v = 0.f, .tex_id = 0};
-	    vertices[5] = {.pos = { side / 2.f,  side / 2.f,  side / 2.f}};//, .u = 1.f, .v = 0.f, .tex_id = 0};
-	    vertices[6] = {.pos = {-side / 2.f, -side / 2.f,  side / 2.f}};//, .u = 0.f, .v = 1.f, .tex_id = 0};
-	    vertices[7] = {.pos = { side / 2.f, -side / 2.f,  side / 2.f}};//, .u = 1.f, .v = 1.f, .tex_id = 0};
+	    gmath::Vec4 vertices[v_size] = {0}; 
+	    vertices[0] = {-side / 2.f,  side / 2.f, -side / 2.f, 1.f};//, .u = 0.f, .v = 0.f, .tex_id = 0};
+	    vertices[1] = { side / 2.f,  side / 2.f, -side / 2.f, 1.f};//, .u = 1.f, .v = 0.f, .tex_id = 0};
+	    vertices[2] = {-side / 2.f, -side / 2.f, -side / 2.f, 1.f};//, .u = 0.f, .v = 1.f, .tex_id = 0};
+	    vertices[3] = { side / 2.f, -side / 2.f, -side / 2.f, 1.f};//, .u = 1.f, .v = 1.f, .tex_id = 0};
+			        				
+	    vertices[4] = {-side / 2.f,  side / 2.f,  side / 2.f, 1.f};//, .u = 0.f, .v = 0.f, .tex_id = 0};
+	    vertices[5] = { side / 2.f,  side / 2.f,  side / 2.f, 1.f};//, .u = 1.f, .v = 0.f, .tex_id = 0};
+	    vertices[6] = {-side / 2.f, -side / 2.f,  side / 2.f, 1.f};//, .u = 0.f, .v = 1.f, .tex_id = 0};
+	    vertices[7] = { side / 2.f, -side / 2.f,  side / 2.f, 1.f};//, .u = 1.f, .v = 1.f, .tex_id = 0};
 
 	    push_vertices(vertices, v_size);
 	    push_uvs(cube_uvs, cube_uvs_size);
@@ -690,10 +647,10 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 	    return id;
 	}	    
 	
-	void push_vertices(const Vertex3* verts, size_t count) {
+	void push_vertices(const gmath::Vec4* verts, size_t count) {
 	    assert(verts);
 	    for (int i = 0; i < count; ++i) {
-		vertices.push_back(verts[i]);
+		vertices_world.push_back(verts[i]);
 	    }
 	}
 	
@@ -812,13 +769,66 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 	}
 
 
-
-	void draw_triangles_wireframe(Color wire_col) {
+	void transform_vertices() {
 	    using namespace gmath;
+	    if (vertices_viewport.capacity() < vertices_world.size()) {
+		vertices_viewport.reserve(vertices_world.size());
+	    }
+	    assert(vertices_viewport.capacity() >= vertices_world.size());
+
+	    vertices_viewport.resize(vertices_world.size());
+	    assert(vertices_viewport.size() >= vertices_world.size());
 
 	    const Transform& camera_transform = transforms[camera.id];
 	    Mat4 camera_model = Mat4::get_model(camera_transform.position, camera_transform.angles);
-	    Mat4 view = Mat4::get_model(camera_transform.position * -1, camera_transform.angles * -1);
+	    Mat4 view = Mat4::get_model(camera_transform.position * -1.f, camera_transform.angles * -1.f);
+
+	    // skip cam_id = 0;
+	    size_t obj_id = camera.id + 1;
+
+	    for (int fi = 0; fi < faces.size(); ++fi) {
+		if (fi >= (ranges[obj_id].start + ranges[obj_id].count) ) {
+		    obj_id++;
+		}
+
+		assert(obj_id < objects.size());
+		assert(obj_id < transforms.size());
+		    
+		const Object& obj = objects[obj_id];
+		const Transform& obj_transform = transforms[obj_id];	
+		Mat4 model = Mat4::get_model(obj_transform.position, obj_transform.angles);
+		Mat4 projection = Mat4::projection((float)tex.width / tex.height, fov, near_clip, far_clip);
+		Mat4 mvp = projection * view * model;
+
+		const Face& face = faces[fi];
+
+		vertices_viewport[face.vs[0].v_index] = vertices_world[face.vs[0].v_index];
+		vertices_viewport[face.vs[1].v_index] = vertices_world[face.vs[1].v_index];
+		vertices_viewport[face.vs[2].v_index] = vertices_world[face.vs[2].v_index];
+		Vec4& a = vertices_viewport[face.vs[0].v_index];
+		Vec4& b = vertices_viewport[face.vs[1].v_index];
+		Vec4& c = vertices_viewport[face.vs[2].v_index];
+
+		a.multiply(mvp);
+		b.multiply(mvp);
+		c.multiply(mvp);
+		//a = a.project(tex.width, tex.height, fov);
+		//b = b.project(tex.width, tex.height, fov);
+		//c = c.project(tex.width, tex.height, fov);
+		
+		//a.perspective_divide();
+		//b.perspective_divide();
+		//c.perspective_divide();
+
+		from_clip_to_viewport(a, tex.width, tex.height);
+		from_clip_to_viewport(b, tex.width, tex.height);
+		from_clip_to_viewport(c, tex.width, tex.height);
+
+	    }
+	}
+
+	void draw_triangles_wireframe(Color wire_col) {
+	    using namespace gmath;
 
 	    // camera always at id = 0, so other objects start at 1
 	    size_t obj_id = 1;
@@ -831,49 +841,33 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 
 		assert(obj_id < objects.size());
 		assert(obj_id < transforms.size());
-		    
-		const Object& obj = objects[obj_id];
-		const Transform& obj_transform = transforms[obj_id];	
-		Mat4 model = Mat4::get_model(obj_transform.position, obj_transform.angles);
-		Mat4 mv = view * model;
 
 		const Face& face = faces[i];
 
-		Vertex3 a = vertices[face.vs[0].v_index];
-		Vertex3 b = vertices[face.vs[1].v_index];
-		Vertex3 c = vertices[face.vs[2].v_index];
-		a.pos.multiply(mv);
-		b.pos.multiply(mv);
-		c.pos.multiply(mv);
-
-
-		a.pos = a.pos.project(tex.width, tex.height);
-		b.pos = b.pos.project(tex.width, tex.height);
-		c.pos = c.pos.project(tex.width, tex.height);
+		const Vec4& a = vertices_viewport[face.vs[0].v_index];
+		const Vec4& b = vertices_viewport[face.vs[1].v_index];
+		const Vec4& c = vertices_viewport[face.vs[2].v_index];
 
 		// near clip
-		if (a.pos.z <= near_clip || b.pos.z <= near_clip || c.pos.z <= near_clip) {
+		if (a.z <= near_clip || b.z <= near_clip || c.z <= near_clip) {
 		    continue;
 		}
 		// far clip
-		if (a.pos.z >= far_clip || b.pos.z >= far_clip || c.pos.z >= far_clip) {
+		if (a.w >= far_clip || b.w >= far_clip || c.w >= far_clip) {
 		    continue;
 		}
 
-		draw_line_color(a.pos.x, a.pos.y, b.pos.x, b.pos.y, wire_col);
-		draw_line_color(a.pos.x, a.pos.y, c.pos.x, c.pos.y, wire_col);
-		draw_line_color(c.pos.x, c.pos.y, b.pos.x, b.pos.y, wire_col);
+		draw_line_color(a.x, a.y, b.x, b.y, wire_col);
+		draw_line_color(a.x, a.y, c.x, c.y, wire_col);
+		draw_line_color(c.x, c.y, b.x, b.y, wire_col);
 	    }
 	}
+
 	void draw_triangles() {
 	    using namespace gmath;
 
 	    reset_z();
 
-	    const Transform& camera_transform = transforms[camera.id];
-	    Mat4 camera_model = Mat4::get_model(camera_transform.position, camera_transform.angles);
-	    constexpr Vec3 camera_dir = {0, 0, 1};
-	    Mat4 view = Mat4::get_model(camera_transform.position * -1, camera_transform.angles * -1);
 
 	    // camera always at id = 0, so other objects start at 1
 	    size_t obj_id = 1;
@@ -889,41 +883,22 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 		assert(obj_id < objects.size());
 		assert(obj_id < transforms.size());
 		    
-		const Object& obj = objects[obj_id];
-		const Transform& obj_transform = transforms[obj_id];	
-		Mat4 model = Mat4::get_model(obj_transform.position, obj_transform.angles);
-		//std::println("model : \n{}", model.to_str());
-		Mat4 mv = view * model;
 		//std::println("mv: \n{}", mv.to_str());
 		const Face& face = faces[i];
 
 		int tex_id = face.tex_index;
 
-		Vertex3 a = vertices[face.vs[0].v_index];
-		Vertex3 b = vertices[face.vs[1].v_index];
-		Vertex3 c = vertices[face.vs[2].v_index];
-		a.pos.multiply(mv);
-		b.pos.multiply(mv);
-		c.pos.multiply(mv);
+		const Vec4 a = vertices_viewport[face.vs[0].v_index];
+		const Vec4 b = vertices_viewport[face.vs[1].v_index];
+		const Vec4 c = vertices_viewport[face.vs[2].v_index];
+		//a.multiply(mvp);
+		//b.multiply(mvp);
+		//c.multiply(mvp);
 
-
-		a.pos = a.pos.project(tex.width, tex.height);
-		b.pos = b.pos.project(tex.width, tex.height);
-		c.pos = c.pos.project(tex.width, tex.height);
-
-		// transfrom to middle of pixel
-		//float p_width = 1.f / tex.width;
-		//float p_height = 1.f / tex.height;
-		//a.pos.x += p_width  / 2.f;
-		//b.pos.x += p_width  / 2.f;
-		//c.pos.x += p_width  / 2.f;
-		//a.pos.y += p_height / 2.f;
-		//b.pos.y += p_height / 2.f;
-		//c.pos.y += p_height / 2.f;
 
 		// backface culling    
-		Vec3 ab = b.pos - a.pos;
-		Vec3 ac = c.pos - a.pos;
+		Vec3 ab = Vec3(b.x, b.y, b.z) - Vec3(a.x, a.y, a.z);
+		Vec3 ac = Vec3(c.x, c.y, c.z) - Vec3(a.x, a.y, a.z);
 		Vec3 normal = gmath::Vec3::cross(ab, ac);
 		normal.normalize();
 
@@ -936,41 +911,29 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 		//std::println("normal1 = {}", normal.to_str());
 		//std::println("normal2 = {}", normal2.to_str());
 
-		float cam_dot = gmath::dot(camera_dir, normal);
+		float cam_dot = gmath::dot({0, 0, -1}, normal);
 		//std::println("cam_dot = {}", cam_dot);
 
-		if (cam_dot <= 0.f) {
+		if (cam_dot >= 0.f) {
 		    continue;
-		    tex_id = -1;
-		    debug_col = RED;
+	//	    tex_id = -1;
+	//	    debug_col = RED;
 		}
 
 		// near clip
-		if (a.pos.z <= near_clip || b.pos.z <= near_clip || c.pos.z <= near_clip) {
+		if (a.z <= near_clip || b.z <= near_clip || c.z <= near_clip) {
 		    continue;
 		}
 		// far clip
-		if (a.pos.z >= far_clip || b.pos.z >= far_clip || c.pos.z >= far_clip) {
+		if (a.z >= far_clip || b.z >= far_clip || c.z >= far_clip) {
 		    continue;
 		}
 		
 		if (tex_id < 0) {
-		    fill_triangle_color(a, b, c, debug_col);
+		    fill_triangle_color({a.x, a.y, a.z}, {b.x, b.y, b.z}, {c.x, c.y, c.z}, debug_col);
 		} 
 		else {
-
-		    size_t uv_ids[3] = { face.vs[0].uv_index,
-					 face.vs[1].uv_index,
-					 face.vs[2].uv_index};
-		    TriangleUV tri = {
-
-			.a = { .pos = a.pos, .u = uvs[face.vs[0].uv_index].u, .v = uvs[face.vs[0].uv_index].v},
-			.b = { .pos = b.pos, .u = uvs[face.vs[1].uv_index].u, .v = uvs[face.vs[1].uv_index].v},
-			.c = { .pos = c.pos, .u = uvs[face.vs[2].uv_index].u, .v = uvs[face.vs[2].uv_index].v},
-			.tex_id = (size_t)tex_id
-		    };
-
-		    fill_triangle_tex(tri);
+		    fill_triangle_tex(face);
 		}
 	    }
 	}
@@ -1286,35 +1249,40 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 	    }
 	}
 
-	//void fill_triangle_tex(Vertex3& a, Vertex3& b, Vertex3& c, const gmath::Mat4 mv) {
-	void fill_triangle_tex(TriangleUV& tri) {
+	void fill_triangle_tex(const Face& face) {
 	    assert(tex.pixels);
 
-	     Vertex3UV& a = tri.a;
-	     Vertex3UV& b = tri.b;
-	     Vertex3UV& c = tri.c;
+	    int indices_sorted[3] = {0, 1, 2};
+
+	    const gmath::Vec4& a = vertices_viewport[face.vs[0].v_index];
+	    const gmath::Vec4& b = vertices_viewport[face.vs[1].v_index];
+	    const gmath::Vec4& c = vertices_viewport[face.vs[2].v_index];
+
+	    sort_y(a, b, c, indices_sorted);
+	    // set start point lowest vertex (cursed)
+	    gmath::Vec4 p1 = vertices_viewport[face.vs[indices_sorted[0]].v_index];
+	    gmath::Vec4 p2 = p1;
+
+	    float p1_u = uvs[face.vs[indices_sorted[0]].uv_index].u;
+	    float p1_v = uvs[face.vs[indices_sorted[0]].uv_index].v;
+	    float target1_u = uvs[face.vs[indices_sorted[1]].uv_index].u;
+	    float target1_v = uvs[face.vs[indices_sorted[1]].uv_index].v;
+
+	    float p2_u = uvs[face.vs[indices_sorted[0]].uv_index].u;
+	    float p2_v = uvs[face.vs[indices_sorted[0]].uv_index].v;
+	    float target2_u = uvs[face.vs[indices_sorted[2]].uv_index].u;
+	    float target2_v = uvs[face.vs[indices_sorted[2]].uv_index].v;
+
+	    // choose target (end points of lines) based on lowest vertex by sorted index
+	    gmath::Vec4 target1 = vertices_viewport[face.vs[indices_sorted[1]].v_index];
+	    gmath::Vec4 target2 = vertices_viewport[face.vs[indices_sorted[2]].v_index];
+
 
 	    Line_Data line1;
 	    Line_Data line2;
 
-	    int indices_sorted[3] = {0, 1, 2};
-
-	    sort_y(a, b, c, indices_sorted);
-	    Vertex3UV* vs[3] = {
-			(indices_sorted[0] == 0 ? &a : (indices_sorted[0] == 1 ? &b : &c)),
-			(indices_sorted[1] == 0 ? &a : (indices_sorted[1] == 1 ? &b : &c)),
-			(indices_sorted[2] == 0 ? &a : (indices_sorted[2] == 1 ? &b : &c)),
-	    };
-	    // set start point lowest vertex (cursed)
-	    Vertex3UV p1 = *vs[0];
-	    Vertex3UV p2 = p1;
-
-	    // choose target (end points of lines) based on lowest vertex by sorted index
-	    Vertex3UV target1 = *vs[1];
-	    Vertex3UV target2 = *vs[2];
-
-	    line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
-	    line2.set_initial(p2.pos.x, p2.pos.y, target2.pos.x, target2.pos.y);
+	    line1.set_initial(p1.x, p1.y, target1.x, target1.y);
+	    line2.set_initial(p2.x, p2.y, target2.x, target2.y);
 
 	    float dist1 = line1.length();
 	    float dist2 = line2.length();
@@ -1324,11 +1292,19 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 
 	    // horizontal line from p1 - target1, draw and skip
 	    if (line1.dy == 0) {
-	        draw_line_hor_tex(p1.pos.x, p1.pos.y, target1.pos.x, p1.pos.z, target1.pos.z, p1.u, p1.v, target1.u, target1.v, tri.tex_id);
-	        p1 = *vs[1];
-	        target1 = *vs[2];
-	        //line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
-		line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
+
+
+	        draw_line_hor_tex(p1.x, p1.y, target1.x, p1.z, target1.z, p1_u, p1_v, target1_u, target1_v, face.tex_index);
+
+	        p1 = vertices_viewport[face.vs[indices_sorted[1]].v_index];
+	        target1 = vertices_viewport[face.vs[indices_sorted[2]].v_index];
+
+		p1_u = uvs[face.vs[indices_sorted[1]].uv_index].u;
+		p1_v = uvs[face.vs[indices_sorted[1]].uv_index].v;
+		target1_u = uvs[face.vs[indices_sorted[2]].uv_index].u;
+		target1_v = uvs[face.vs[indices_sorted[2]].uv_index].v;
+
+		line1.set_initial(p1.x, p1.y, target1.x, target1.y);
 		dist1 = line1.length();
 	    }
 
@@ -1340,10 +1316,10 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 		    if (line1.done) {
 			//std::println("BEFORE:\np1: {}, {}", line1.x1, line1.y1);
 			//std::println("target1: {}", target1.to_str());
-			p1 = *vs[1];
-			target1 = *vs[2];
-			//line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
-			line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
+			p1 = vertices_viewport[face.vs[indices_sorted[1]].v_index];
+			target1 = vertices_viewport[face.vs[indices_sorted[2]].v_index];
+			//line1.set_initial(p1.x, p1.y, target1.x, target1.y);
+			line1.set_initial(p1.x, p1.y, target1.x, target1.y);
 			dist1 = line1.length();
 			//std::println("AFTER:\ndist1 = {}, v.length = {}", dist1, v.length());
 			//std::println("p1: {}, {}", line1.x1, line1.y1);
@@ -1360,34 +1336,38 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 		    line1.went_down = false;
 		    line2.went_down = false;
 
-		    float z1_recip = 1.f / p1.pos.z;
-		    float z2_recip = 1.f / p2.pos.z;
 
-		    float zt1_recip = 1.f / target1.pos.z;
-		    float zt2_recip = 1.f / target2.pos.z;
+
+		    float z1_recip = 1.f / p1.z;
+		    float z2_recip = 1.f / p2.z;
+
+		    float zt1_recip = 1.f / target1.z;
+		    float zt2_recip = 1.f / target2.z;
 
 		    float t = 1.f - line1.length() / dist1;
-		    float u1 = gmath::lerpf(p1.u * z1_recip, target1.u * zt1_recip, t);
-		    float v1 = gmath::lerpf(p1.v * z1_recip, target1.v * zt1_recip, t);
+		    float u1 = gmath::lerpf(p1_u * z1_recip, target1_u * zt1_recip, t);
+		    float v1 = gmath::lerpf(p1_v * z1_recip, target1_v * zt1_recip, t);
 		    //float u1 = gmath::lerpf(p1.u, target1.u, t);
 		    //float v1 = gmath::lerpf(p1.v, target1.v, t);
-		    float z1 = gmath::lerpf(p1.pos.z, target1.pos.z, t);
+		    float z1 = gmath::lerpf(p1.z, target1.z, t);
 
 		    float zi1 = 1.f / gmath::lerpf(z1_recip, zt1_recip, t);
 
+
 		    t = 1.f - line2.length() / dist2;
-		    float u2 = gmath::lerpf(p2.u * z2_recip, target2.u * zt2_recip, t);
-		    float v2 = gmath::lerpf(p2.v * z2_recip, target2.v * zt2_recip, t);
-		    float z2 = gmath::lerpf(p2.pos.z, target2.pos.z, t);
+		    float u2 = gmath::lerpf(p2_u * z2_recip, target2_u * zt2_recip, t);
+		    float v2 = gmath::lerpf(p2_v * z2_recip, target2_v * zt2_recip, t);
+		    float z2 = gmath::lerpf(p2.z, target2.z, t);
 
 		    float zi2 = 1.f / gmath::lerpf(z2_recip, zt2_recip, t);
 
-		    draw_line_hor_tex(line1.x1, line1.y1, line2.x1, zi1, zi2, u1 * zi1, v1 * zi1, u2 * zi2, v2 * zi2, tri.tex_id, second);
+		    draw_line_hor_tex(line1.x1, line1.y1, line2.x1, zi1, zi2, u1 * zi1, v1 * zi1, u2 * zi2, v2 * zi2, face.tex_index, second);
 		}
 	    }
 	}
 
-	void fill_triangle_color(Vertex3& a, Vertex3& b, Vertex3& c, Color col) {
+	void fill_triangle_color(gmath::Vec3 a, gmath::Vec3 b, gmath::Vec3 c, Color col) {
+	    using namespace gmath;
 	    assert(tex.pixels);
 
 	    Line_Data line1;
@@ -1396,31 +1376,31 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 	    int indices_sorted[3] = {0, 1, 2};
 
 	    sort_y(a, b, c, indices_sorted);
-	    Vertex3* vs[3] = {
+	    Vec3* vs[3] = {
 			(indices_sorted[0] == 0 ? &a : (indices_sorted[0] == 1 ? &b : &c)),
 			(indices_sorted[1] == 0 ? &a : (indices_sorted[1] == 1 ? &b : &c)),
 			(indices_sorted[2] == 0 ? &a : (indices_sorted[2] == 1 ? &b : &c)),
 	    };
 	    // set start point lowest vertex (cursed)
-	    Vertex3 p1 = *vs[0];
-	    Vertex3 p2 = p1;
+	    Vec3 p1 = *vs[0];
+	    Vec3 p2 = p1;
 
 	    // choose target (end points of lines) based on lowest vertex by sorted index
-	    Vertex3 target1 = *vs[1];
-	    Vertex3 target2 = *vs[2];
+	    Vec3 target1 = *vs[1];
+	    Vec3 target2 = *vs[2];
 
-	    line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
-	    line2.set_initial(p2.pos.x, p2.pos.y, target2.pos.x, target2.pos.y);
+	    line1.set_initial(p1.x, p1.y, target1.x, target1.y);
+	    line2.set_initial(p2.x, p2.y, target2.x, target2.y);
 
 	    float dist1 = line1.length();
 	    float dist2 = line2.length();
 
 	    // horizontal line from p1 - target1, draw and skip
 	    if (line1.dy == 0) {
-		draw_line_hor_col_z(p1.pos.x, p1.pos.y, target1.pos.x, p1.pos.z, target1.pos.z, col);
+		draw_line_hor_col_z(p1.x, p1.y, target1.x, p1.z, target1.z, col);
 		p1 = target1;
 		target1 = *vs[2];
-		line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
+		line1.set_initial(p1.x, p1.y, target1.x, target1.y);
 		dist1 = line1.length();
 	    }
 
@@ -1432,7 +1412,7 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 		    if (line1.done) {
 			p1 = target1;
 			target1 = *vs[2];
-			line1.set_initial(p1.pos.x, p1.pos.y, target1.pos.x, target1.pos.y);
+			line1.set_initial(p1.x, p1.y, target1.x, target1.y);
 			dist1 = line1.length();
 		    }
 		}
@@ -1446,10 +1426,10 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 		    line2.went_down = false;
 
 		    float t = 1.f - line1.length() / dist1;
-		    float z1 = gmath::lerpf(p1.pos.z, target1.pos.z, t);
+		    float z1 = gmath::lerpf(p1.z, target1.z, t);
 
 		    t = 1.f - line2.length() / dist2;
-		    float z2 = gmath::lerpf(p2.pos.z, target2.pos.z, t);
+		    float z2 = gmath::lerpf(p2.z, target2.z, t);
 
 		    draw_line_hor_col_z(line1.x1, line1.y1, line2.x1, z1, z2, col);
 		}

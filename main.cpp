@@ -10,12 +10,12 @@ const char* window_title = "3D";
 POINT mouse_prev = {0, 0};
 
 //constexpr float aspect_ratio = 16.f / 9.f;
-constexpr uint64_t window_width = 900;
-constexpr uint64_t window_height = 600;
+constexpr uint64_t window_width = 1200;
+constexpr uint64_t window_height = 900;
 
 
-d3::Transform cube_transform = {{0, 0, 2}, {0}};
-d3::Transform camera_transform = {{0, 0, -20}, {0}};
+d3::Transform cube_transform = {{0, 0, 0}, {0}};
+d3::Transform camera_transform = {{0, 0, -2}, {0}};
 d3::Transform surf_transform = {{0, 0, 0}, {0}};
 
 float camera_speed = 0.1f;
@@ -171,8 +171,8 @@ size_t load_teapot(d3::Renderer& renderer, const d3::Transform& t = {0}, size_t 
 }
 
 // 4 verts anti-clockwise, start top left
-size_t push_surface(d3::Renderer& renderer, const d3::Vertex3* verts, gmath::Vec3 normal, int tex_id = -1) {
-    size_t v_start = renderer.vertices.size();
+size_t push_surface(d3::Renderer& renderer, const gmath::Vec4* verts, gmath::Vec3 normal, int tex_id = -1) {
+    size_t v_start = renderer.vertices_world.size();
     size_t uv_start = renderer.uvs.size();
     size_t n_start = renderer.normals.size();
 
@@ -210,7 +210,7 @@ size_t push_pyramid(d3::Renderer& renderer, gmath::Vec3 origin, gmath::Vec3 dir,
 
     size_t id = renderer.push_object(t, range);
     constexpr size_t vert_count = 5;
-    d3::Vertex3 verts[vert_count] = {
+    gmath::Vec3 verts[vert_count] = {
 	{},
 	{},
 	{},
@@ -218,7 +218,7 @@ size_t push_pyramid(d3::Renderer& renderer, gmath::Vec3 origin, gmath::Vec3 dir,
 	{},
     };
 
-    renderer.push_vertices(verts, vert_count);
+    //renderer.push_vertices(verts, vert_count);
     return id;
 }
 
@@ -247,15 +247,15 @@ int main() {
 
     size_t teapot_id = load_teapot(renderer, {0, 5, 0}, 1);
     renderer.push_cube(.5f, {{0, 0, -2}}, 0);
-    size_t cube_id = renderer.push_cube(3, cube_transform, 1);
+    size_t cube_id = renderer.push_cube(1, cube_transform, 1);
 
 
     float surf_size = 10.f;
-    d3::Vertex3 surf_verts[4] = {
-        {{-surf_size / 2.f,  surf_size / 2.f, -1.f }},
-        {{ surf_size / 2.f,  surf_size / 2.f, -1.f }},
-        {{-surf_size / 2.f, -surf_size / 2.f, -1.f }},
-        {{ surf_size / 2.f, -surf_size / 2.f, -1.f }}
+    gmath::Vec4 surf_verts[4] = {
+        {-surf_size / 2.f,  surf_size / 2.f, -1.f, 1.f },
+        { surf_size / 2.f,  surf_size / 2.f, -1.f, 1.f },
+        {-surf_size / 2.f, -surf_size / 2.f, -1.f, 1.f },
+        { surf_size / 2.f, -surf_size / 2.f, -1.f, 1.f }
     };
     size_t surf_id = push_surface(renderer, surf_verts, {0, 0, -1});
 
@@ -274,11 +274,12 @@ int main() {
 	renderer.draw_rec(rec, {0xFF, 0x00, 0x22, 0xFF} );
 
 	renderer.obj_set_transform(cube_id, cube_transform);
-	renderer.obj_set_transform(surf_id, surf_transform);
+	//renderer.obj_set_transform(surf_id, surf_transform);
 	camera_transform.move_dir(camera_dir, camera_speed);
 	renderer.set_cam_transform(camera_transform);
+	renderer.transform_vertices();
+	//renderer.draw_triangles_wireframe(d3::WHITE);
 	renderer.draw_triangles();
-	renderer.draw_triangles_wireframe(d3::WHITE);
 
 	window.end_frame();
 
