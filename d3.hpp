@@ -772,14 +772,18 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 	void transform_vertices() {
 	    using namespace gmath;
 	    if (vertices_viewport.capacity() < vertices_world.size()) {
+		std::println("viewport verts reserve, old size = {}, new size = {}", vertices_viewport.size(), vertices_world.size());
 		vertices_viewport.reserve(vertices_world.size());
 	    }
 	    assert(vertices_viewport.capacity() >= vertices_world.size());
 
-	    vertices_viewport.resize(vertices_world.size());
+	    if (vertices_viewport.size() < vertices_world.size())   vertices_viewport.resize(vertices_world.size());
 	    assert(vertices_viewport.size() >= vertices_world.size());
 
-	    const Transform& camera_transform = transforms[camera.id];
+	    Transform& camera_transform = transforms[camera.id];
+
+	    camera_transform.angles.y *= -1.f;
+
 	    Mat4 camera_model = Mat4::get_model(camera_transform.position, camera_transform.angles);
 	    Mat4 view = Mat4::get_model(camera_transform.position * -1.f, camera_transform.angles * -1.f);
 
@@ -897,7 +901,7 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 
 
 		// backface culling    
-		Vec3 ab = Vec3(b.x, b.y, b.z) - Vec3(a.x, a.y, a.z);
+		Vec3 ab = Vec3(a.x, a.y, a.z) - Vec3(b.x, b.y, b.z);
 		Vec3 ac = Vec3(c.x, c.y, c.z) - Vec3(a.x, a.y, a.z);
 		Vec3 normal = gmath::Vec3::cross(ab, ac);
 		normal.normalize();

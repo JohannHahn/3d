@@ -58,35 +58,6 @@ bool index_test(float u, float v, int width, int height) {
     return succ;
 }
 
-void reduce_angles(gmath::Vec3& angles) {
-    float pi2 = gmath::PI * 2.f;
-	if (angles.x >= pi2) {
-	    angles.x -= pi2;
-	}
-	if (angles.y >= pi2) {
-	    angles.y -= pi2;
-	}
-	if (angles.z >= pi2) {
-	    angles.z -= pi2;
-	}
-	if (angles.x <= pi2) {
-	    angles.x += pi2;
-	}
-	if (angles.y <= pi2) {
-	    angles.y += pi2;
-	}
-	if (angles.z <= pi2) {
-	    angles.z += pi2;
-	}
-    
-}
-
-void reduce_angles_all() {
-    reduce_angles(surf_transform.angles);    
-    reduce_angles(camera_transform.angles);    
-    reduce_angles(cube_transform.angles);    
-}
-
 void controls(d3::Window& window) {
 
 	float step = 0.05f;
