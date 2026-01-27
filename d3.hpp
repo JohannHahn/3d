@@ -206,10 +206,11 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 	    using namespace gmath;
 	    if (speed == 0.f || dir.length() == 0.f) return;
 
-	    dir.multiply(gmath::Mat4::rotation_from_angles(angles));
-	    dir.normalize();
+	    float a_x = (position.z > 0.f ? -angles.x : angles.x);
+	    dir.multiply(gmath::Mat4::rotation_from_angles({a_x, -angles.y, angles.z}));
+	    //dir.normalize();
 	    dir.multiply(speed);
-	    position.add(dir);
+	    //position.add(dir);
 	    position.multiply(gmath::Mat4::translation(dir));
 	}
     };
@@ -414,7 +415,7 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 	std::vector<float> z_buffer;
 
 	float far_clip = 10.f;
-	float near_clip = .1f;
+	float near_clip = .4f;
 	float fov = gmath::PI / 2.f;
 
 	Object camera = {0};
@@ -782,9 +783,6 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 
 	    Transform& camera_transform = transforms[camera.id];
 
-	    camera_transform.angles.y *= -1.f;
-
-	    Mat4 camera_model = Mat4::get_model(camera_transform.position, camera_transform.angles);
 	    Mat4 view = Mat4::get_model(camera_transform.position * -1.f, camera_transform.angles * -1.f);
 
 	    // skip cam_id = 0;
@@ -816,17 +814,10 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 		a.multiply(mvp);
 		b.multiply(mvp);
 		c.multiply(mvp);
-		//a = a.project(tex.width, tex.height, fov);
-		//b = b.project(tex.width, tex.height, fov);
-		//c = c.project(tex.width, tex.height, fov);
 		
-		//a.perspective_divide();
-		//b.perspective_divide();
-		//c.perspective_divide();
-
-		from_clip_to_viewport(a, tex.width, tex.height);
-		from_clip_to_viewport(b, tex.width, tex.height);
-		from_clip_to_viewport(c, tex.width, tex.height);
+		a.perspective_divide_and_center(tex.width, tex.height);
+		b.perspective_divide_and_center(tex.width, tex.height);
+		c.perspective_divide_and_center(tex.width, tex.height);
 
 	    }
 	}
@@ -882,12 +873,9 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 		if (i >= (ranges[obj_id].start + ranges[obj_id].count) ) {
 		    obj_id++;
 		}
-
-		//std::println("drawing face = {} ", i);
 		assert(obj_id < objects.size());
 		assert(obj_id < transforms.size());
 		    
-		//std::println("mv: \n{}", mv.to_str());
 		const Face& face = faces[i];
 
 		int tex_id = face.tex_index;
@@ -895,9 +883,6 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 		const Vec4 a = vertices_viewport[face.vs[0].v_index];
 		const Vec4 b = vertices_viewport[face.vs[1].v_index];
 		const Vec4 c = vertices_viewport[face.vs[2].v_index];
-		//a.multiply(mvp);
-		//b.multiply(mvp);
-		//c.multiply(mvp);
 
 
 		// backface culling    
@@ -906,22 +891,13 @@ constexpr d3::Color GRAY = {0x16, 0x16, 0x16, 255};
 		Vec3 normal = gmath::Vec3::cross(ab, ac);
 		normal.normalize();
 
-		//Vec3 normal2 = normals[face.vs[0].n_index];
-		//Mat4 n_m = camera_model * Mat4::rotation(obj_transform.angles);
-		//normal2.multiply(Mat4::rotation(camera_transform.angles));
-		////normal2.project(tex.width, tex.height);
-		//normal2.normalize();
-
-		//std::println("normal1 = {}", normal.to_str());
-		//std::println("normal2 = {}", normal2.to_str());
 
 		float cam_dot = gmath::dot({0, 0, -1}, normal);
-		//std::println("cam_dot = {}", cam_dot);
 
-		if (cam_dot >= 0.f) {
+		if (cam_dot < 0.f) {
 		    continue;
-	//	    tex_id = -1;
-	//	    debug_col = RED;
+		    tex_id = -1;
+		    debug_col = RED;
 		}
 
 		// near clip

@@ -15,7 +15,7 @@ constexpr uint64_t window_height = 900;
 
 
 d3::Transform cube_transform = {{0, 0, 0}, {0}};
-d3::Transform camera_transform = {{0, 0, -2}, {0}};
+d3::Transform camera_transform = {{0, 0, -20}, {0}};
 d3::Transform surf_transform = {{0, 0, 0}, {0}};
 
 float camera_speed = 0.1f;
@@ -216,12 +216,12 @@ int main() {
 	renderer.textures.push_back(t2);
     }
 
-    size_t teapot_id = load_teapot(renderer, {0, 5, 0}, 1);
-    renderer.push_cube(.5f, {{0, 0, -2}}, 0);
+    size_t teapot_id = load_teapot(renderer, {0, 0, -1}, 1);
+    renderer.push_cube(.5f, {{0, 0, -1}}, 0);
     size_t cube_id = renderer.push_cube(1, cube_transform, 1);
 
 
-    float surf_size = 10.f;
+    float surf_size = 3.f;
     gmath::Vec4 surf_verts[4] = {
         {-surf_size / 2.f,  surf_size / 2.f, -1.f, 1.f },
         { surf_size / 2.f,  surf_size / 2.f, -1.f, 1.f },
